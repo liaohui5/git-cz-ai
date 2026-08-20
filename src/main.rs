@@ -15,29 +15,29 @@ use tempfile;
 
 #[derive(Parser)]
 struct Cli {
-    /// 初始化配置文件（~/.config/git-cz/config.toml）
+    /// Init config file（~/.config/git-cz/config.toml）
     #[arg(long)]
     init_config: bool,
-    /// 子命令；不传则保持现有交互式提交流程
+    /// Subcommand
     #[command(subcommand)]
     command: Option<CliCommand>,
 }
 
 #[derive(Subcommand)]
 enum CliCommand {
-    /// 用 AI 生成提交信息
+    /// Generate commit message by llm api
     Ai(AiArgs),
 }
 
 #[derive(Args)]
 struct AiArgs {
-    /// LLM API 端点，如 https://api.openai.com/v1/chat/completions
+    /// LLM api endporint(example: https://api.openai.com/v1/chat/completions)
     #[arg(long)]
     api_endpoint: Option<String>,
-    /// API 令牌；未提供时回退到环境变量 GIT_CZ_AI_OPENAI_API_KEY 与配置文件
+    /// api access token(example: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)
     #[arg(long, env = "GIT_CZ_AI_OPENAI_API_KEY")]
     api_token: Option<String>,
-    /// 模型名称，如 gpt-5-mini
+    /// model name(example: gpt-5-turbo)
     #[arg(long)]
     model_name: Option<String>,
 }
