@@ -54,6 +54,7 @@ fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
     let prompt = build_ai_prompt(&diff);
 
     // 3. 发送请求到 LLM API
+    eprintln!("Request has been sent, waiting for response");
     let response = ureq::post(&args.api_endpoint)
         .set("Authorization", &format!("Bearer {}", args.api_token))
         .set("Content-Type", "application/json")
@@ -63,7 +64,10 @@ fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
         }));
 
     let body = match response {
-        Ok(resp) => resp.into_string()?,
+        Ok(resp) => {
+            eprintln!("Response received");
+            resp.into_string()?
+        }
         Err(ureq::Error::Status(code, resp)) => {
             let text = resp.into_string().unwrap_or_default();
             eprintln!("llm api error: HTTP {}: {}", code, text);
