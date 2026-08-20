@@ -1,3 +1,5 @@
+use clap::{Args, Parser, Subcommand};
+use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -10,7 +12,106 @@ use std::path::Path;
 use std::process::Command;
 use tempfile;
 
+#[derive(Parser)]
+struct Cli {
+    /// 子命令；不传则保持现有交互式提交流程
+    #[command(subcommand)]
+    command: Option<CliCommand>,
+}
+
+#[derive(Subcommand)]
+enum CliCommand {
+    /// 用 AI 生成提交信息
+    Ai(AiArgs),
+}
+
+#[derive(Args)]
+struct AiArgs {
+    /// LLM API 端点，如 https://api.openai.com/v1/chat/completions
+    #[arg(long)]
+    api_endpoint: String,
+    /// API 令牌；未提供时回退到环境变量 GIT_CZ_AI_OPENAI_API_KEY
+    #[arg(long, env = "GIT_CZ_AI_OPENAI_API_KEY")]
+    api_token: String,
+    /// 模型名称，如 gpt-5-mini
+    #[arg(long)]
+    api_model: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cli = Cli::parse();
+    match cli.command {
+        Some(CliCommand::Ai(args)) => run_ai(&args),
+        None => run_interactive(),
+    }
+}
+
+fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
+    // 1. 获取已暂存的 diff（git diff --cached）
+    let diff = get_staged_diff(Path::new("."))?;
+
+    // 2. 用 diff 替换提示词中的 {{diff}} 占位符
+    let prompt = build_ai_prompt(&diff);
+
+    // 3. 发送请求到 LLM API
+    let response = ureq::post(&args.api_endpoint)
+        .set("Authorization", &format!("Bearer {}", args.api_token))
+        .set("Content-Type", "application/json")
+        .send_json(serde_json::json!({
+            "model": args.api_model,
+            "messages": [{ "role": "user", "content": prompt }],
+        }));
+
+    let body = match response {
+        Ok(resp) => resp.into_string()?,
+        Err(ureq::Error::Status(code, resp)) => {
+            let text = resp.into_string().unwrap_or_default();
+            eprintln!("llm api error: HTTP {}: {}", code, text);
+            std::process::exit(1);
+        }
+        Err(ureq::Error::Transport(e)) => {
+            eprintln!("llm api request failed: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // 4. 解析响应为 Vec<String>，失败立即退出
+    let candidates = match parse_llm_response(&body) {
+        Ok(candidates) => candidates,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // 5. 命令行选择候选；Enter 选中，Ctrl-C 退出（不提交）
+    let mut selector = QuerySelector::new(candidates, |text, items| -> Vec<String> {
+        items
+            .iter()
+            .filter(|item| item.contains(text))
+            .cloned()
+            .collect()
+    })
+    .title("Select a commit message:")
+    .listbox_lines(10)
+    .prompt()?;
+
+    let selection = match selector.run() {
+        Ok(selection) => selection,
+        Err(e) if e.to_string().contains("ctrl+c") => {
+            println!("Commit aborted.");
+            std::process::exit(0);
+        }
+        Err(e) => return Err(e.into()),
+    };
+
+    // 6. 自动提交
+    perform_commit(Path::new("."), &selection)?;
+    println!("Commit successful!");
+    Ok(())
+}
+
+fn run_interactive() -> Result<(), Box<dyn std::error::Error>> {
     // 启动预检：无任何 staged changes 时直接退出
     let repo = Repository::open(".")?;
     if let Err(e) = ensure_staged_changes(&repo) {
