@@ -23,6 +23,8 @@
 | `docs/superpowers/plans/2026-08-20-ai-subcommand.md` | 修改（370、393、623、626、630、634 行） | 字段、使用点、参数引用 |
 | `docs/superpowers/specs/2026-08-20-waiting-for-response-design.md` | 修改（34 行） | `args.api_model` → `args.model_name` |
 | `docs/superpowers/plans/2026-08-20-waiting-for-response.md` | 修改（41、135、152、163 行） | `args.api_model`、命令示例 |
+| `docs/superpowers/specs/2026-08-20-rename-api-model-design.md` | 修改 | 全文档 `api_model` → `model_name`、`--api-model` → `--model-name`（含标题；用户裁定全扫，见任务 2 步骤 7） |
+| `docs/superpowers/plans/2026-08-20-rename-api-model.md` | 修改 | 全文档同上（文件名本身含 `api-model` 属路径，不改） |
 
 > 所有替换均为机械性文本替换：`api_model` → `model_name`（代码标识符）、`--api-model` → `--model-name`（CLI 参数）。**不要**动 `--api-endpoint`、`--api-token`、`GIT_CZ_AI_OPENAI_API_KEY`、JSON 请求体键 `"model"`。
 
@@ -120,12 +122,16 @@ git commit -m "refactor: rename api_model field to model_name"
 
 第 41 行：`"model": args.api_model,` → `"model": args.model_name,`；第 135、152、163 行命令中 `--api-model=gpt-test` → `--model-name=gpt-test`。
 
-- [ ] **步骤 7：残留扫描**
+- [ ] **步骤 7：更新本计划的两个文档（用户裁定：全扫）**
+
+用户裁定残留扫描按计划原样全扫（不排除本计划文档）。因此 `docs/superpowers/specs/2026-08-20-rename-api-model-design.md` 与 `docs/superpowers/plans/2026-08-20-rename-api-model.md` 中所有 `api_model` → `model_name`、`--api-model` → `--model-name` 一并替换，包括标题、说明文字、文件结构表对照列；两个文件名本身含 `api-model` 属路径，不改。
+
+- [ ] **步骤 8：残留扫描**
 
 运行：`grep -rn "api_model\|api-model" README.md AGENTS.md docs/ src/`
-预期：**无输出**（所有引用已更新）
+预期：**无输出**（所有引用已更新；注意 `target/` 不在扫描范围内）
 
-- [ ] **步骤 8：Commit**
+- [ ] **步骤 9：Commit**
 
 ```bash
 git add README.md AGENTS.md docs/
