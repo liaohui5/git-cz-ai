@@ -1,6 +1,8 @@
 use git_cz_ai::{
-    build_commit_message, build_commit_types, format_commit_types, perform_commit,
+    build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
+    perform_commit,
 };
+use git2::Repository;
 use promkit::preset::query_selector::QuerySelector;
 use promkit::{preset::confirm::Confirm, preset::readline::Readline, suggest::Suggest};
 use std::env;
@@ -9,6 +11,13 @@ use std::process::Command;
 use tempfile;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 启动预检：无任何 staged changes 时直接退出
+    let repo = Repository::open(".")?;
+    if let Err(e) = ensure_staged_changes(&repo) {
+        eprintln!("{}", e);
+        std::process::exit(1);
+    }
+
     let commit_types = build_commit_types();
     let commit_types_display = format_commit_types(commit_types);
 
