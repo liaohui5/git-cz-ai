@@ -41,3 +41,15 @@ pub fn load_config(path: &Path) -> Result<Config, Box<dyn Error>> {
         .map_err(|e| format!("Failed to parse config {}: {}", path.display(), e))?;
     Ok(config)
 }
+
+/// 初始化配置文件。已存在返回 Ok(false)（不动文件）；
+/// 不存在则创建父目录并写入默认内容，返回 Ok(true)。
+pub fn init_config(path: &Path) -> Result<bool, Box<dyn Error>> {
+    if path.exists() {
+        return Ok(false);
+    }
+    let dir = path.parent().ok_or("Config path has no parent directory")?;
+    fs::create_dir_all(dir)?;
+    fs::write(path, DEFAULT_CONFIG_CONTENT)?;
+    Ok(true)
+}

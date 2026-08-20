@@ -1,6 +1,7 @@
 use git2::Repository;
 use git2::Signature;
 use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
+use git_cz_ai::config::init_config;
 use git_cz_ai::config::{load_config, Config};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
@@ -484,4 +485,32 @@ fn test_load_config_partial_fields() {
     assert!(config.api_endpoint.is_none());
     assert!(config.api_token.is_none());
     assert_eq!(config.model_name.as_deref(), Some("gpt-test"));
+}
+
+#[test]
+fn test_init_config_creates_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("git-cz").join("config.toml");
+    let created = init_config(&path).unwrap();
+    assert!(created, "文件不存在时应创建并返回 true");
+    assert!(path.exists(), "配置文件应被创建");
+    let content = std::fs::read_to_string(&path).unwrap();
+    assert!(content.contains("api_endpoint"), "默认内容应含 api_endpoint");
+    assert!(content.contains("api_token"), "默认内容应含 api_token");
+    assert!(content.contains("model_name"), "默认内容应含 model_name");
+}
+
+#[test]
+fn test_init_config_exists() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("config.toml");
+    std::fs::create_dir_all(temp_dir.path()).unwrap();
+    std::fs::write(&path, "original").unwrap();
+    let created = init_config(&path).unwrap();
+    assert!(!created, "文件已存在时应返回 false");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "original",
+        "已存在的文件不应被覆盖"
+    );
 }
