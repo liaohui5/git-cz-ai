@@ -1,6 +1,7 @@
 use clap::{Args, Parser, Subcommand};
 use git2::Repository;
 use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
+use git_cz_ai::config::{config_path, init_config, load_config, resolve_ai_args};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -14,6 +15,9 @@ use tempfile;
 
 #[derive(Parser)]
 struct Cli {
+    /// 初始化配置文件（~/.config/git-cz/config.toml）
+    #[arg(long)]
+    init_config: bool,
     /// 子命令；不传则保持现有交互式提交流程
     #[command(subcommand)]
     command: Option<CliCommand>,
@@ -29,37 +33,71 @@ enum CliCommand {
 struct AiArgs {
     /// LLM API 端点，如 https://api.openai.com/v1/chat/completions
     #[arg(long)]
-    api_endpoint: String,
-    /// API 令牌；未提供时回退到环境变量 GIT_CZ_AI_OPENAI_API_KEY
+    api_endpoint: Option<String>,
+    /// API 令牌；未提供时回退到环境变量 GIT_CZ_AI_OPENAI_API_KEY 与配置文件
     #[arg(long, env = "GIT_CZ_AI_OPENAI_API_KEY")]
-    api_token: String,
+    api_token: Option<String>,
     /// 模型名称，如 gpt-5-mini
     #[arg(long)]
-    model_name: String,
+    model_name: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    if cli.init_config {
+        return run_init_config();
+    }
     match cli.command {
         Some(CliCommand::Ai(args)) => run_ai(&args),
         None => run_interactive(),
     }
 }
 
+fn run_init_config() -> Result<(), Box<dyn std::error::Error>> {
+    let path = config_path()?;
+    if init_config(&path)? {
+        println!("Config created: {}", path.display());
+    } else {
+        println!("Config is exists({})", path.display());
+    }
+    Ok(())
+}
+
 fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
+    // 0. 加载配置文件并合并参数（优先级：CLI > env > config）
+    let path = config_path()?;
+    let config = load_config(&path)?;
+    let resolved = match resolve_ai_args(
+        args.api_endpoint.clone(),
+        args.api_token.clone(),
+        args.model_name.clone(),
+        &config,
+    ) {
+        Ok(resolved) => resolved,
+        Err(missing) => {
+            for field in &missing {
+                eprintln!(
+                    "Missing {}. Set it via CLI, config file, or environment variable",
+                    field
+                );
+            }
+            std::process::exit(1);
+        }
+    };
+
     // 1. 获取已暂存的 diff（git diff --cached）
     let diff = get_staged_diff(Path::new("."))?;
 
     // 2. 用 diff 替换提示词中的 {{diff}} 占位符
     let prompt = build_ai_prompt(&diff);
 
-    // 3. 发送请求到 LLM API
+    // 3. 发送请求到 LLM API（改用 resolved 值）
     eprintln!("Request has been sent, waiting for response");
-    let response = ureq::post(&args.api_endpoint)
-        .set("Authorization", &format!("Bearer {}", args.api_token))
+    let response = ureq::post(&resolved.api_endpoint)
+        .set("Authorization", &format!("Bearer {}", resolved.api_token))
         .set("Content-Type", "application/json")
         .send_json(serde_json::json!({
-            "model": args.model_name,
+            "model": resolved.model_name,
             "messages": [{ "role": "user", "content": prompt }],
         }));
 
