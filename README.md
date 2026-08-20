@@ -79,12 +79,38 @@ export GIT_CZ_AI_OPENAI_API_KEY=sk-xxx
 git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --model-name=gpt-5-mini
 ```
 
+### 配置文件
+
+`git-cz ai` 的 API 参数可从配置文件加载（命令行参数优先于配置文件；token 还优先于环境变量 `GIT_CZ_AI_OPENAI_API_KEY`）。
+
+初始化默认配置（`~/.config/git-cz/config.toml`）：
+
+```bash
+git-cz --init-config
+```
+
+首次运行会创建配置文件，内容如下：
+
+```toml
+api_endpoint="https://api.deepseek.com/v1/chat/completions"
+api_token="sk-your-token-string"
+model_name="deepseek-v4-flash"
+```
+
+之后运行 `git-cz ai` 可省略命令行参数（仍可显式传入以覆盖配置值）：
+
+```bash
+git-cz ai
+# 等价于：git-cz ai --api-endpoint=https://api.deepseek.com/v1/chat/completions \
+#                    --api-token=sk-your-token-string --model-name=deepseek-v4-flash
+```
+
 ## 环境变量
 
 | 变量 | 用途 | 默认值 |
 |------|------|--------|
 | `EDITOR` | body 编辑器模式（输入 `e` 时）调用的编辑器命令 | Windows：`notepad`；其他平台：`vim` |
-| `GIT_CZ_AI_OPENAI_API_KEY` | `git-cz ai` 的 `--api-token` 回退来源 | 无（两者皆缺时 clap 报错退出） |
+| `GIT_CZ_AI_OPENAI_API_KEY` | `git-cz ai` 的 `--api-token` 回退来源 | 无（CLI、配置文件、环境变量三者均缺时 `git-cz ai` 报缺失参数退出） |
 
 ## 提交信息格式
 
@@ -117,7 +143,7 @@ git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --model-name
 cargo test
 ```
 
-共 23 个集成测试，覆盖消息构建、暂存检查、真实提交、AI 提示词/响应解析/staged diff 等。
+共 32 个集成测试，覆盖消息构建、暂存检查、真实提交、AI 提示词/响应解析/staged diff、配置加载/初始化/参数合并等。
 
 ## 许可证
 

@@ -31,6 +31,8 @@
 | CLI 解析 | `clap` | 4.5.60（`derive` + `env` 特性） | `ai` 子命令、参数解析、token 环境变量回退 |
 | JSON | `serde_json` | 1.0.127 | LLM 请求/响应编解码 |
 | HTTP 客户端 | `ureq` | 2.12.1（`json` 特性，默认 rustls TLS） | 向 LLM API 发送 chat completions 请求 |
+| TOML 解析 | `toml` | 0.8.23 | 配置文件（`config.toml`）解析 |
+| 序列化 | `serde` | 1.0.209（`derive` 特性） | `Config` 结构体反序列化（配置加载） |
 
 > 版本号来源：`Cargo.lock`（`tempfile` 的 `Cargo.toml` 写的是 `"3.2"`，属语义化版本区间 `>=3.2, <4.0`，实际锁定为 `3.12.0`）。
 
@@ -45,23 +47,29 @@
 整体为**单二进制 CLI 应用**，采用 **库（lib）+ 二进制（bin）分离** 的 Rust 标准分层结构：
 
 ```
-src/main.rs  (可执行入口：clap 子命令解析 + 交互/AI 流程编排)
+src/main.rs  (可执行入口：clap 子命令解析 + --init-config flag + 交互/AI 流程编排)
     │ 调用
     ▼
 src/lib.rs   (库：纯业务逻辑，可测试)
     ├── build_commit_types()      —— 提交类型定义
     ├── format_commit_types()     —— 类型列表格式化
     ├── build_commit_message()    —— 提交消息拼接
-    └── perform_commit()          —— 执行 git 提交（git2）
-    └── ai.rs（子模块，经 pub mod ai 挂载）
-        ├── build_ai_prompt()     —— 提示词模板 {{diff}} 替换
-        ├── parse_llm_response()  —— LLM 响应双层解析
-        └── get_staged_diff()     —— git diff --cached 取暂存变更
+    ├── perform_commit()          —— 执行 git 提交（git2）
+    ├── ai.rs（子模块，经 pub mod ai 挂载）
+    │   ├── build_ai_prompt()     —— 提示词模板 {{diff}} 替换
+    │   ├── parse_llm_response()  —— LLM 响应双层解析
+    │   └── get_staged_diff()     —— git diff --cached 取暂存变更
+    └── config.rs（子模块，经 pub mod config 挂载）
+        ├── config_path()         —— 配置文件路径（$XDG_CONFIG_HOME 回退 ~/.config）
+        ├── init_config()         —— 初始化默认配置（已存在不覆盖）
+        ├── load_config()         —— 读取/解析配置 TOML
+        └── resolve_ai_args()     —— 合并参数（CLI > env > config）
 ```
 
 - **`src/lib.rs`（库层）**：无任何终端交互依赖，全部为纯函数/Git 操作，是单元测试的直接对象。
 - **`src/ai.rs`（AI 子命令纯逻辑层）**：提示词模板、LLM 响应解析、staged diff 获取，均为纯函数（`get_staged_diff` 仅调用外部 `git` 命令），可单测。
-- **`src/main.rs`（应用层）**：clap 解析子命令（`ai` / 无子命令）；`run_ai` 编排「取 diff → 构建提示词 → ureq 请求 → 解析 → promkit 选择 → 提交」，`run_interactive` 负责交互式 UI（promkit 组件）、环境变量读取、外部编辑器调用，并串联库层函数完成端到端流程。
+- **`src/config.rs`（配置纯逻辑层）**：配置文件路径、TOML 读写、参数合并（`config_path` / `init_config` / `load_config` / `resolve_ai_args`），均为纯函数，可单测。
+- **`src/main.rs`（应用层）**：clap 解析子命令（`ai` / 无子命令）与顶层 `--init-config` flag；`run_ai` 编排「加载配置 → 合并参数 → 取 diff → 构建提示词 → ureq 请求 → 解析 → promkit 选择 → 提交」，`run_interactive` 负责交互式 UI（promkit 组件）、环境变量读取、外部编辑器调用，并串联库层函数完成端到端流程。
 
 模块职责单一、交互清晰：**交互 → 收集参数 → 库层生成消息 → 库层提交**。
 
@@ -77,15 +85,16 @@ git-cz-ai/
 ├── LICENSE             # MIT 协议，Copyright (c) 2026 secret
 ├── .gitignore          # 仅忽略 /target
 ├── src/
-│   ├── main.rs         # 可执行入口：clap 子命令解析 + 交互/AI 流程编排
+│   ├── main.rs         # 可执行入口：clap 子命令解析 + --init-config flag + 交互/AI 流程编排
+│   ├── config.rs       # 配置纯逻辑层：路径、TOML 读写、CLI > env > config 参数合并
 │   ├── ai.rs           # AI 子命令纯逻辑层：提示词模板、LLM 响应解析、staged diff 获取
-│   └── lib.rs          # 库：commit 类型、消息构建、git 提交执行（pub mod ai 挂载 ai.rs）
+│   └── lib.rs          # 库：commit 类型、消息构建、git 提交执行（pub mod ai / config 挂载）
 ├── tests/
-│   └── main_test.rs    # 集成测试（23 个测试函数）
+│   └── main_test.rs    # 集成测试（32 个测试函数）
 └── target/             # 构建产物目录（git 忽略）
 ```
 
-> 项目未配置 CI（无 `.github/workflows`）、无 `.env`、无任何配置文件——所有行为均在代码内硬编码。
+> 项目未配置 CI（无 `.github/workflows`）、无 `.env`；CLI 支持用户配置文件 `~/.config/git-cz/config.toml`（经 `--init-config` 初始化，仓库内不内置配置文件）。
 
 ---
 
@@ -162,7 +171,7 @@ flowchart TD
 
 ### 5.5 AI 子命令（`git-cz ai`）
 
-**入口**：`src/main.rs` 的 `run_ai`（bin 层编排，无自动化测试）；**纯逻辑**：`src/ai.rs`（可单测）。
+**入口**：`src/main.rs` 的 `run_ai`（bin 层编排，无自动化测试）；**纯逻辑**：`src/ai.rs`（可单测）。`AiArgs`（`src/main.rs`）三字段 `api_endpoint` / `api_token` / `model_name` 均为 `Option<String>`（`--api-token` 带 clap `env` 回退 `GIT_CZ_AI_OPENAI_API_KEY`），最终取值经「CLI > env > config」链解析（见 §5.6）。
 
 | 函数/常量 | 签名 | 说明 |
 |------|------|------|
@@ -174,7 +183,10 @@ flowchart TD
 **数据流**（`run_ai`）：
 
 ```
-git-cz ai --api-endpoint=<url> [--api-token=<token>] --model-name=<model>
+git-cz ai [--api-endpoint=<url>] [--api-token=<token>] [--model-name=<model>]
+  → config_path() 定位配置文件    # $XDG_CONFIG_HOME 回退 ~/.config，拼 git-cz/config.toml
+  → load_config() 读取配置        # 文件缺失 → 全 None（不报错）
+  → resolve_ai_args(CLI, config)  # 合并参数（CLI > env > config）；三处均缺 → 打印 Missing ...，exit(1)
   → get_staged_diff(".")        # git diff --cached，无 staged 即退出（非零）
   → build_ai_prompt(diff)        # {{diff}} 替换
   → ureq POST <endpoint>         # Authorization: Bearer <token>，body: {model, messages:[{role:user, content:prompt}]}
@@ -186,6 +198,22 @@ git-cz ai --api-endpoint=<url> [--api-token=<token>] --model-name=<model>
 **交互细节**：promkit 0.4.5 的 `QuerySelector::run()` 在 Ctrl-C 时返回 `Err`（消息含 `ctrl+c`），`run_ai` 匹配后打印 `Commit aborted.` 并退出码 0（不提交）；Enter 返回选中项直接 `perform_commit`。
 
 > 注意：`src/ai.rs` 中的提示词模板由用户提供、原样嵌入代码，修改提示词即修改程序行为（含对 LLM 输出格式的约束）。
+
+### 5.6 配置系统（`--init-config` 与配置加载）
+
+**入口**：`src/config.rs`（纯逻辑层，可单测）；`src/main.rs` 的 `run_init_config` / `run_ai`（bin 层编排）。
+
+| 函数/常量 | 签名 | 说明 |
+|------|------|------|
+| `DEFAULT_CONFIG_CONTENT` | `&'static str` | 默认配置文件内容（三字段，用户规格原文，禁止改写） |
+| `Config` | `struct`（三 `Option<String>` 字段） | 配置文件结构：`api_endpoint` / `api_token` / `model_name`，缺失字段为 None |
+| `config_path` | `() -> Result<PathBuf, Box<dyn Error>>` | 返回 `~/.config/git-cz/config.toml`；`$XDG_CONFIG_HOME` 未设时回退 `~/.config`，取不到 home 时报错 |
+| `init_config` | `(path: &Path) -> Result<bool, Box<dyn Error>>` | 文件已存在返回 `Ok(false)`（不动文件）；不存在则创建父目录 + 默认内容并返回 `Ok(true)` |
+| `load_config` | `(path: &Path) -> Result<Config, Box<dyn Error>>` | 文件缺失返回全 None 的 Config（不报错）；解析失败返回错误（消息含路径与解析错误） |
+| `resolve_ai_args` | `(Option<String> × 3, &Config) -> Result<ResolvedAiArgs, Vec<String>>` | 合并三字段：CLI 值（env 已由 clap 并入 CLI 层）> config；任一字段三处均缺返回缺失的 CLI 参数名列表 |
+| `ResolvedAiArgs` | `struct`（三 `String` 字段） | 合并后的确定值参数，`run_ai` 直接使用 |
+
+**优先级链**：`--api-endpoint` / `--api-token` / `--model-name` 依次取 **CLI > env（仅 `--api-token` 经 `GIT_CZ_AI_OPENAI_API_KEY`）> config**；三处均缺时 `run_ai` 打印 `Missing <参数名>` 并以退出码 1 结束。
 
 ---
 
@@ -212,24 +240,38 @@ git-cz ai --api-endpoint=<url> [--api-token=<token>] --model-name=<model>
 
 ## 8. 配置与环境
 
-### 8.1 环境变量
+### 8.1 配置文件（`~/.config/git-cz/config.toml`）
+
+`git-cz ai` 的三个 API 参数均可从配置文件加载：
+
+| 配置字段 | 对应 CLI 参数 | 默认内容 |
+|----------|---------------|----------|
+| `api_endpoint` | `--api-endpoint` | `https://api.deepseek.com/v1/chat/completions` |
+| `api_token` | `--api-token` | `sk-your-token-string` |
+| `model_name` | `--model-name` | `deepseek-v4-flash` |
+
+- 路径由 `config_path()` 解析：`$XDG_CONFIG_HOME` 未设时回退 `~/.config`，再拼 `git-cz/config.toml`。
+- 初始化：`git-cz --init-config`（调用 `init_config`，已存在时返回 false 且不覆盖）。
+- **优先级链**：CLI > env（仅 `--api-token` 经 `GIT_CZ_AI_OPENAI_API_KEY`）> 配置文件；三处均缺时 `resolve_ai_args` 返回缺失字段名列表，`run_ai` 打印 `Missing ...` 后以退出码 1 结束。
+
+### 8.2 环境变量
 
 | 变量 | 用途 | 默认值 |
 |------|------|--------|
 | `EDITOR` | body 编辑器模式（输入 `e` 时）调用的编辑器命令 | Windows：`notepad`；其他平台：`vim` |
-| `GIT_CZ_AI_OPENAI_API_KEY` | `ai` 子命令 `--api-token` 的回退来源（clap `env` 特性自动读取）；两者皆缺时 clap 报错退出 | 无 |
+| `GIT_CZ_AI_OPENAI_API_KEY` | `ai` 子命令 `--api-token` 的回退来源（clap `env` 特性自动读取，优先级高于配置文件） | 无 |
 
-### 8.2 构建与运行命令
+### 8.3 构建与运行命令
 
 ```bash
 cargo build            # 调试构建（产物：target/debug/git-cz）
 cargo build --release  # 发布构建（产物：target/release/git-cz）
 cargo run              # 运行交互式 CLI
-cargo test             # 运行测试（23 个测试函数全部通过）
+cargo test             # 运行测试（32 个测试函数全部通过）
 cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 ```
 
-### 8.3 其他
+### 8.4 其他
 
 - `openssl` 采用 `vendored` 特性，构建无需系统 OpenSSL 头文件，但需 `cc` 编译器（Cargo.lock 中存在 `cc`、`libc`、`shlex` 等编译链依赖）。
 - 无发布/部署流程配置（无 CI、无 Dockerfile、无安装脚本）。
@@ -238,9 +280,10 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 
 ## 9. 测试策略
 
-- **类型**：集成测试（`tests/main_test.rs`），共 **23 个测试函数**，使用 `tempfile::tempdir()` 创建临时 Git 仓库进行真实提交验证。
+- **类型**：集成测试（`tests/main_test.rs`），共 **32 个测试函数**，使用 `tempfile::tempdir()` 创建临时 Git 仓库进行真实提交验证。
 - **框架**：Rust 标准测试（`#[test]`），无第三方测试框架、无覆盖率工具配置。
 - **AI 相关测试**（6 个）：均为纯函数测试，无需 mock 网络；`test_get_staged_diff` 依赖系统 `git` 命令。
+- **配置相关测试**（9 个）：覆盖 `load_config` / `init_config` / `resolve_ai_args`，全部使用 `tempfile::tempdir()` 临时目录，无需真实配置文件。
 
 | 测试函数 | 覆盖点 |
 |----------|--------|
@@ -267,6 +310,15 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 | `test_parse_llm_response_invalid_json` | 非法 JSON → 错误 `llm api response is not a json string` |
 | `test_parse_llm_response_content_not_array` | envelope 存在但 content 非数组 → 同错误 |
 | `test_get_staged_diff` | 临时仓库 staged 文件后返回含文件名的 diff |
+| `test_load_config_missing_file` | 配置文件不存在 → 返回全 None 的 Config（不报错） |
+| `test_load_config_parses_toml` | 正常 TOML → 三字段正确解析 |
+| `test_load_config_invalid_toml` | 非法 TOML → 错误含 `Failed to parse config` |
+| `test_load_config_partial_fields` | 仅含部分字段 → 缺字段为 None |
+| `test_init_config_creates_file` | 文件不存在 → 创建父目录 + 默认内容并返回 true |
+| `test_init_config_exists` | 文件已存在 → 返回 false 且不覆盖原内容 |
+| `test_resolve_ai_args_cli_wins` | CLI 值优先于 config 值 |
+| `test_resolve_ai_args_config_fallback` | CLI 全缺 → 回退 config 值 |
+| `test_resolve_ai_args_missing` | 三处均缺 → 返回缺失字段名列表（`api-endpoint` / `api-token` / `model-name`） |
 
 - 辅助函数 `init_repo_with_initial_commit(path: &Path) -> Repository`：创建临时仓库并预置空 initial commit，供测试复用。
 
@@ -289,8 +341,9 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 
 ## 11. 附录：快速参考
 
-- 库层 API 均在 `src/lib.rs`，无 `pub use` 重导出，测试/二进制通过 `git_cz_ai::` 路径引用（crate 名 `git-cz-ai` 的连字符映射为下划线）。
+- 库层 API 分别在 `src/lib.rs`（核心业务逻辑）与 `src/config.rs`（配置系统），无 `pub use` 重导出，测试/二进制通过 `git_cz_ai::` 路径引用（crate 名 `git-cz-ai` 的连字符映射为下划线）。
 - 提交类型全集（11 种）：`feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci` `build` `revert`。
 - scope 建议词（12 个）：`app` `core` `ui` `db` `api` `frontend` `backend` `config` `build` `sec` `infra` `deps`。
 - footer 类型（2 种）：`fix`、`close`，格式 `类型: #编号`。
-- `git-cz ai` 子命令参数：`--api-endpoint <URL>`（必填）、`--api-token <TOKEN>`（必填，可经环境变量 `GIT_CZ_AI_OPENAI_API_KEY` 回退）、`--model-name <MODEL>`（必填）。调用示例：`git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --api-token=sk-xxx --model-name=gpt-5-mini`。
+- `git-cz --init-config`：初始化默认配置文件（`~/.config/git-cz/config.toml`，路径经 `config_path()` 解析）；文件已存在时不覆盖并提示。
+- `git-cz ai` 子命令参数：`--api-endpoint <URL>`、`--api-token <TOKEN>`（可经环境变量 `GIT_CZ_AI_OPENAI_API_KEY` 回退）、`--model-name <MODEL>`——三者均可省略，经配置文件 `~/.config/git-cz/config.toml` 回退；CLI > env > config 三处均缺时 `git-cz ai` 报缺失参数退出。调用示例：`git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --api-token=sk-xxx --model-name=gpt-5-mini`。
