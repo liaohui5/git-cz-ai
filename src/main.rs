@@ -1,10 +1,10 @@
 use clap::{Args, Parser, Subcommand};
+use git2::Repository;
 use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
 };
-use git2::Repository;
 use promkit::preset::query_selector::QuerySelector;
 use promkit::{preset::confirm::Confirm, preset::readline::Readline, suggest::Suggest};
 use std::env;
