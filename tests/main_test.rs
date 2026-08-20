@@ -2,6 +2,7 @@ use git2::Repository;
 use git2::Signature;
 use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
 use git_cz_ai::config::init_config;
+use git_cz_ai::config::resolve_ai_args;
 use git_cz_ai::config::{load_config, Config};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
@@ -513,4 +514,46 @@ fn test_init_config_exists() {
         "original",
         "已存在的文件不应被覆盖"
     );
+}
+
+#[test]
+fn test_resolve_ai_args_cli_wins() {
+    let config = Config {
+        api_endpoint: Some("https://config.example.com".to_string()),
+        api_token: Some("config-token".to_string()),
+        model_name: Some("config-model".to_string()),
+    };
+    let resolved = resolve_ai_args(
+        Some("https://cli.example.com".to_string()),
+        Some("cli-token".to_string()),
+        Some("cli-model".to_string()),
+        &config,
+    )
+    .unwrap();
+    assert_eq!(resolved.api_endpoint, "https://cli.example.com");
+    assert_eq!(resolved.api_token, "cli-token");
+    assert_eq!(resolved.model_name, "cli-model");
+}
+
+#[test]
+fn test_resolve_ai_args_config_fallback() {
+    let config = Config {
+        api_endpoint: Some("https://config.example.com".to_string()),
+        api_token: Some("config-token".to_string()),
+        model_name: Some("config-model".to_string()),
+    };
+    let resolved = resolve_ai_args(None, None, None, &config).unwrap();
+    assert_eq!(resolved.api_endpoint, "https://config.example.com");
+    assert_eq!(resolved.api_token, "config-token");
+    assert_eq!(resolved.model_name, "config-model");
+}
+
+#[test]
+fn test_resolve_ai_args_missing() {
+    let config = Config::default();
+    let missing = resolve_ai_args(None, None, None, &config).unwrap_err();
+    assert_eq!(missing.len(), 3, "三个字段均缺应返回 3 个缺失项");
+    assert!(missing.iter().any(|m| m.contains("api-endpoint")));
+    assert!(missing.iter().any(|m| m.contains("api-token")));
+    assert!(missing.iter().any(|m| m.contains("model-name")));
 }

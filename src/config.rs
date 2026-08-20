@@ -53,3 +53,44 @@ pub fn init_config(path: &Path) -> Result<bool, Box<dyn Error>> {
     fs::write(path, DEFAULT_CONFIG_CONTENT)?;
     Ok(true)
 }
+
+/// 合并后的 AI 请求参数（三字段均为确定值）。
+#[derive(Debug, PartialEq)]
+pub struct ResolvedAiArgs {
+    pub api_endpoint: String,
+    pub api_token: String,
+    pub model_name: String,
+}
+
+/// 按「CLI（含 clap env 回退后的值）> config」合并三字段；
+/// 任一字段三处均缺时返回 Err(缺失的 CLI 参数名列表，如 "--api-endpoint")。
+pub fn resolve_ai_args(
+    cli_api_endpoint: Option<String>,
+    cli_api_token: Option<String>,
+    cli_model_name: Option<String>,
+    config: &Config,
+) -> Result<ResolvedAiArgs, Vec<String>> {
+    let api_endpoint = cli_api_endpoint.or_else(|| config.api_endpoint.clone());
+    let api_token = cli_api_token.or_else(|| config.api_token.clone());
+    let model_name = cli_model_name.or_else(|| config.model_name.clone());
+
+    let mut missing = Vec::new();
+    if api_endpoint.is_none() {
+        missing.push("--api-endpoint".to_string());
+    }
+    if api_token.is_none() {
+        missing.push("--api-token".to_string());
+    }
+    if model_name.is_none() {
+        missing.push("--model-name".to_string());
+    }
+    if !missing.is_empty() {
+        return Err(missing);
+    }
+
+    Ok(ResolvedAiArgs {
+        api_endpoint: api_endpoint.unwrap(),
+        api_token: api_token.unwrap(),
+        model_name: model_name.unwrap(),
+    })
+}
