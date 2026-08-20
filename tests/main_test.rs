@@ -1,5 +1,6 @@
 use git2::Repository;
 use git2::Signature;
+use git_cz_ai::ai::build_ai_prompt;
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -378,4 +379,17 @@ fn test_ensure_staged_changes_empty_repo_staged() {
     index.write().unwrap();
 
     ensure_staged_changes(&repo).unwrap();
+}
+
+#[test]
+fn test_build_ai_prompt_placeholder() {
+    let diff = "diff --git a/src/main.rs b/src/main.rs";
+    let prompt = build_ai_prompt(diff);
+    assert!(
+        prompt.contains(diff),
+        "diff 内容应替换 {{diff}} 占位符"
+    );
+    assert!(!prompt.contains("{{diff}}"), "占位符应被替换");
+    assert!(prompt.contains("## 角色与任务"), "模板头部应保留");
+    assert!(prompt.contains("Conventional Commits"), "模板正文应保留");
 }

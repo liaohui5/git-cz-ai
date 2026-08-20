@@ -1,3 +1,5 @@
+pub mod ai;
+
 use git2::{Repository, Signature};
 use std::error::Error;
 use std::path::Path;
