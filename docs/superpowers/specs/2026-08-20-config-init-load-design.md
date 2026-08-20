@@ -76,7 +76,7 @@ model_name="deepseek-v4-flash"
 |------|-----------|
 | `git-cz --init-config` + 配置已存在 | `Config is exists(~/.config/git-cz/config.toml)`，退出码 0，文件不动 |
 | `git-cz --init-config` + 配置不存在 | 创建 `~/.config/git-cz/` 与 `config.toml`（默认内容），输出 `Config created: ~/.config/git-cz/config.toml`，退出码 0 |
-| `git-cz ai` + CLI 全提供 | 用 CLI 值，不读配置 |
+| `git-cz ai` + CLI 全提供 | 用 CLI 值（配置仍会读取；解析失败按「配置 TOML 解析失败」处理） |
 | `git-cz ai` + CLI 缺 `--api-token` + env 有 | 用 env 值（clap env 特性自动回退） |
 | `git-cz ai` + CLI/env 缺 + config 有 | 用 config 值 |
 | 三处均缺某字段 | `Missing --<field>. Set it via CLI, config file, or environment variable`（逐项列出全部缺失项），退出码非零 |
