@@ -21,7 +21,7 @@
 
 ## 安装
 
-需要 Rust 工具链（edition 2021）。`openssl` 采用 `vendored` 特性静态编译，构建时需 C 编译器（`cc`），无需系统预装 OpenSSL。
+需要 Rust 工具链（edition 2021）,`openssl` 采用 `vendored` 特性静态编译，构建时需 C 编译器（`cc`），无需系统预装 OpenSSL。
 
 ```bash
 # 构建（产物：target/release/git-cz）
