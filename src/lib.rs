@@ -75,13 +75,32 @@ pub fn build_commit_message(
     full_message
 }
 
+/// 严格语义检查：index（暂存区）与 HEAD 无任何差异时报错。
+/// 仅统计 staged changes；untracked 文件与未 add 的工作区修改均不计入。
+/// 无 HEAD（空仓库）时以空树为基线，此时任何已 add 的内容都算 staged。
+pub fn ensure_staged_changes(repo: &Repository) -> Result<(), Box<dyn Error>> {
+    let index = repo.index()?;
+
+    // 基线 tree：有 HEAD 用 HEAD 的 tree；无 HEAD（unborn branch，即空仓库）用 None（等价空树）
+    let base_tree = match repo.head() {
+        Ok(head) => {
+            let head_commit = repo.find_commit(head.target().ok_or("Failed to find HEAD target")?)?;
+            Some(head_commit.tree()?)
+        }
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => None,
+        Err(e) => return Err(e.into()),
+    };
+
+    let diff = repo.diff_tree_to_index(base_tree.as_ref(), Some(&index), None)?;
+    if diff.deltas().len() == 0 {
+        return Err("Your git repository is clean".into());
+    }
+    Ok(())
+}
+
 pub fn perform_commit(repo_path: &Path, full_commit_message: &str) -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(repo_path)?;
-
-    let statuses = repo.statuses(None)?;
-    if statuses.is_empty() {
-        return Err("Nothing to commit, working directory clean".into());
-    }
+    ensure_staged_changes(&repo)?;
 
     let mut index = repo.index()?;
     let tree_id = index.write_tree()?;

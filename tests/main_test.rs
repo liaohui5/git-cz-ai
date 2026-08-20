@@ -1,6 +1,9 @@
 use git2::Repository;
 use git2::Signature;
-use git_cz_ai::{build_commit_message, build_commit_types, format_commit_types, perform_commit};
+use git_cz_ai::{
+    build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
+    perform_commit,
+};
 use std::path::Path;
 use tempfile;
 
@@ -211,7 +214,7 @@ fn test_perform_commit_no_changes() {
     assert!(result.is_err(), "Commit with no changes should fail");
     assert_eq!(
         result.unwrap_err().to_string(),
-        "Nothing to commit, working directory clean",
+        "Your git repository is clean",
         "Error message should indicate nothing to commit"
     );
 }
@@ -268,4 +271,111 @@ fn test_perform_commit_invalid_path() {
     let invalid_path = Path::new("/this/path/does/not/exist");
     let commit_message = "This commit should fail";
     perform_commit(invalid_path, commit_message).unwrap();
+}
+
+fn init_repo_with_initial_commit(path: &Path) -> Repository {
+    let repo = Repository::init(path).unwrap();
+    let mut index = repo.index().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let signature = Signature::now("Test User", "test@example.com").unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        "Initial commit",
+        &tree,
+        &[],
+    )
+    .unwrap();
+    drop(tree); // 结束对 repo 的借用，才能把 repo 返回出去
+    repo
+}
+
+#[test]
+fn test_ensure_staged_changes_with_staged() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = init_repo_with_initial_commit(temp_dir.path());
+
+    std::fs::write(temp_dir.path().join("b.txt"), "hi").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new("b.txt")).unwrap();
+    index.write().unwrap();
+
+    ensure_staged_changes(&repo).unwrap();
+}
+
+#[test]
+fn test_ensure_staged_changes_clean() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = init_repo_with_initial_commit(temp_dir.path());
+
+    let err = ensure_staged_changes(&repo).unwrap_err();
+    assert_eq!(err.to_string(), "Your git repository is clean");
+}
+
+#[test]
+fn test_ensure_staged_changes_untracked_only() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = init_repo_with_initial_commit(temp_dir.path());
+
+    // 新建文件但不 add：untracked，不算 staged
+    std::fs::write(temp_dir.path().join("untracked.txt"), "new").unwrap();
+
+    let err = ensure_staged_changes(&repo).unwrap_err();
+    assert_eq!(err.to_string(), "Your git repository is clean");
+}
+
+#[test]
+fn test_ensure_staged_changes_workdir_modification_only() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = init_repo_with_initial_commit(temp_dir.path());
+
+    // 初始提交包含 a.txt
+    std::fs::write(temp_dir.path().join("a.txt"), "v1").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    let signature = Signature::now("Test User", "test@example.com").unwrap();
+    repo.commit(
+        Some("HEAD"),
+        &signature,
+        &signature,
+        "commit a.txt",
+        &tree,
+        &[&repo.head().unwrap().peel_to_commit().unwrap()],
+    )
+    .unwrap();
+
+    // 修改 a.txt 内容但不更新 index：仅工作区修改，不算 staged
+    std::fs::write(temp_dir.path().join("a.txt"), "v2").unwrap();
+
+    let err = ensure_staged_changes(&repo).unwrap_err();
+    assert_eq!(err.to_string(), "Your git repository is clean");
+}
+
+#[test]
+fn test_ensure_staged_changes_empty_repo_clean() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = Repository::init(temp_dir.path()).unwrap();
+
+    // 空仓库（无提交、无 add）：无 staged
+    let err = ensure_staged_changes(&repo).unwrap_err();
+    assert_eq!(err.to_string(), "Your git repository is clean");
+}
+
+#[test]
+fn test_ensure_staged_changes_empty_repo_staged() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = Repository::init(temp_dir.path()).unwrap();
+
+    // 空仓库 + 已 add 文件：相对空基线有 staged
+    std::fs::write(temp_dir.path().join("a.txt"), "hi").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+
+    ensure_staged_changes(&repo).unwrap();
 }
