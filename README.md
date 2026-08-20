@@ -5,7 +5,7 @@
 - **交互式模式**：通过终端向导逐步填写提交信息（类型、范围、描述、正文、页脚），生成符合 [Conventional Commits](https://www.conventionalcommits.org/) 规范的提交消息并执行 `git commit`。
 - **AI 模式**（`git-cz ai`）：读取已暂存（staged）的 diff，调用 OpenAI 兼容的 LLM API 生成多条提交信息候选，由你在命令行中选择，Enter 自动提交 / Ctrl-C 退出。
 
-> fork 自 [k3ii/git-cz](https://github.com/k3ii/git-cz)
+> 灵感来自 [k3ii/git-cz](https://github.com/k3ii/git-cz)
 
 ---
 
