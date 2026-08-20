@@ -53,3 +53,28 @@ const AI_PROMPT_TEMPLATE: &str = r##"## 角色与任务
 pub fn build_ai_prompt(diff: &str) -> String {
     AI_PROMPT_TEMPLATE.replace("{{diff}}", diff)
 }
+
+/// 解析 LLM API 响应为提交信息候选列表。
+/// 双层解析：
+/// 1. 优先提取 OpenAI 兼容 envelope 的 choices[0].message.content，再把 content 解析为 Vec<String>；
+/// 2. 回退：把整个响应体直接解析为 Vec<String>（兼容直接返回数组的 API）。
+/// 任何一步失败返回 Err，消息统一为 "llm api response is not a json string"。
+pub fn parse_llm_response(body: &str) -> Result<Vec<String>, Box<dyn Error>> {
+    let parse_err = || -> Box<dyn Error> { "llm api response is not a json string".into() };
+
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|_| parse_err())?;
+
+    // 优先尝试 OpenAI 兼容 envelope：choices[0].message.content
+    if let Some(content) = value
+        .get("choices")
+        .and_then(|choices| choices.get(0))
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(|content| content.as_str())
+    {
+        return serde_json::from_str(content).map_err(|_| parse_err());
+    }
+
+    // 回退：响应体本身就是字符串数组
+    serde_json::from_value(value).map_err(|_| parse_err())
+}

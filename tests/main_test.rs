@@ -1,6 +1,6 @@
 use git2::Repository;
 use git2::Signature;
-use git_cz_ai::ai::build_ai_prompt;
+use git_cz_ai::ai::{build_ai_prompt, parse_llm_response};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -392,4 +392,31 @@ fn test_build_ai_prompt_placeholder() {
     assert!(!prompt.contains("{{diff}}"), "占位符应被替换");
     assert!(prompt.contains("## 角色与任务"), "模板头部应保留");
     assert!(prompt.contains("Conventional Commits"), "模板正文应保留");
+}
+
+#[test]
+fn test_parse_llm_response_direct_array() {
+    let body = r#"["feat: add login", "fix: fix bug"]"#;
+    let result = parse_llm_response(body).unwrap();
+    assert_eq!(result, vec!["feat: add login", "fix: fix bug"]);
+}
+
+#[test]
+fn test_parse_llm_response_openai_envelope() {
+    let body = r#"{"choices":[{"message":{"content":"[\"feat: add login\"]"}}]}"#;
+    let result = parse_llm_response(body).unwrap();
+    assert_eq!(result, vec!["feat: add login"]);
+}
+
+#[test]
+fn test_parse_llm_response_invalid_json() {
+    let err = parse_llm_response("not a json").unwrap_err();
+    assert_eq!(err.to_string(), "llm api response is not a json string");
+}
+
+#[test]
+fn test_parse_llm_response_content_not_array() {
+    let body = r#"{"choices":[{"message":{"content":"{\"a\": 1}"}}]}"#;
+    let err = parse_llm_response(body).unwrap_err();
+    assert_eq!(err.to_string(), "llm api response is not a json string");
 }
