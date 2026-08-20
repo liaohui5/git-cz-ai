@@ -45,7 +45,7 @@ git-cz
 
 <div align="center">
   <picture>
-    <img alt="preview" src="https://raw.githubusercontent.com/liaohui5/git-cz/main/preview.gif">
+    <img alt="preview" src="https://raw.githubusercontent.com/liaohui5/git-cz-ai/refs/heads/main/preview.gif">
   </picture>
 </div>
 
