@@ -1,6 +1,7 @@
 use git2::Repository;
 use git2::Signature;
 use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
+use git_cz_ai::config::{load_config, Config};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -433,4 +434,54 @@ fn test_get_staged_diff() {
 
     let diff = get_staged_diff(temp_dir.path()).unwrap();
     assert!(diff.contains("a.txt"), "diff 应包含新增文件名");
+}
+
+#[test]
+fn test_load_config_missing_file() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("config.toml");
+    let config = load_config(&path).unwrap();
+    assert!(config.api_endpoint.is_none());
+    assert!(config.api_token.is_none());
+    assert!(config.model_name.is_none());
+}
+
+#[test]
+fn test_load_config_parses_toml() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("config.toml");
+    std::fs::write(
+        &path,
+        "api_endpoint=\"https://api.deepseek.com/v1/chat/completions\"\n\
+         api_token=\"sk-test\"\n\
+         model_name=\"deepseek-v4-flash\"\n",
+    )
+    .unwrap();
+    let config = load_config(&path).unwrap();
+    assert_eq!(
+        config.api_endpoint.as_deref(),
+        Some("https://api.deepseek.com/v1/chat/completions")
+    );
+    assert_eq!(config.api_token.as_deref(), Some("sk-test"));
+    assert_eq!(config.model_name.as_deref(), Some("deepseek-v4-flash"));
+}
+
+#[test]
+fn test_load_config_invalid_toml() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("config.toml");
+    std::fs::write(&path, "not valid toml {{{").unwrap();
+    let err = load_config(&path).unwrap_err();
+    assert!(err.to_string().contains("Failed to parse config"));
+}
+
+#[test]
+fn test_load_config_partial_fields() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("config.toml");
+    std::fs::write(&path, "model_name=\"gpt-test\"\n").unwrap();
+    let config = load_config(&path).unwrap();
+    assert!(config.api_endpoint.is_none());
+    assert!(config.api_token.is_none());
+    assert_eq!(config.model_name.as_deref(), Some("gpt-test"));
 }

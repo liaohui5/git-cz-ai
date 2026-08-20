@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod config;
 
 use git2::{Repository, Signature};
 use std::error::Error;
