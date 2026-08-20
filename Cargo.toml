@@ -1,0 +1,26 @@
+[package]
+name = "git-cz-ai"
+version = "0.0.1"
+edition = "2021"
+authors = ["liaohui5"]
+description = "A simple commitizen CLI tool in rust"
+homepage ="https://github.com/liaohui5/git-cz-ai"
+repository = "https://github.com/liaohui5/git-cz-ai"
+license-file = "LICENSE"
+readme = "README.md"
+keywords = ["git", "commitizen", "cli", "rust", "ai"]
+categories = ["development-tools"]
+
+[dependencies]
+git2 = "0.19.0"
+promkit = "0.4.5"
+openssl = { version = "0.10", features = ["vendored"] }
+tempfile = "3.2"
+
+[dev-dependencies]
+tempfile = "3.2"
+
+[[bin]]
+name = "git-cz"
+path = "src/main.rs"
+
