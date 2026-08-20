@@ -114,8 +114,16 @@ pub fn perform_commit(repo_path: &Path, full_commit_message: &str) -> Result<(),
     let author_email = config.get_string("user.email")?;
     let sig = Signature::now(&author_name, &author_email)?;
 
-    let head = repo.head()?;
-    let parent_commit = repo.find_commit(head.target().ok_or("Failed to find HEAD target")?)?;
+    let parents = match repo.head() {
+        Ok(head) => {
+            let parent_commit = repo.find_commit(head.target().ok_or("Failed to find HEAD target")?)?;
+            vec![parent_commit]
+        }
+        Err(e) if e.code() == git2::ErrorCode::UnbornBranch => vec![],
+        Err(e) => return Err(e.into()),
+    };
+
+    let parent_refs: Vec<&git2::Commit> = parents.iter().collect();
 
     repo.commit(
         Some("HEAD"),
@@ -123,7 +131,7 @@ pub fn perform_commit(repo_path: &Path, full_commit_message: &str) -> Result<(),
         &sig,
         &full_commit_message,
         &tree,
-        &[&parent_commit],
+        &parent_refs,
     )?;
 
     Ok(())

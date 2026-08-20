@@ -549,6 +549,26 @@ fn test_resolve_ai_args_config_fallback() {
 }
 
 #[test]
+fn test_perform_commit_empty_repo() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = Repository::init(temp_dir.path()).unwrap();
+
+    // 在新空仓库中添加一个暂存文件
+    std::fs::write(temp_dir.path().join("a.txt"), "hello").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+
+    // 第一次提交应该成功，且没有任何 parent
+    perform_commit(temp_dir.path(), "feat: initial commit").unwrap();
+
+    let head = repo.head().unwrap();
+    let commit = repo.find_commit(head.target().unwrap()).unwrap();
+    assert_eq!(commit.summary().unwrap(), "feat: initial commit");
+    assert_eq!(commit.parent_count(), 0);
+}
+
+#[test]
 fn test_resolve_ai_args_missing() {
     let config = Config::default();
     let missing = resolve_ai_args(None, None, None, &config).unwrap_err();
