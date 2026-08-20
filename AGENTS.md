@@ -72,7 +72,7 @@ git-cz-ai/
 │   ├── main.rs         # 可执行入口：完整交互式提交流程
 │   └── lib.rs          # 库：commit 类型、消息构建、git 提交执行
 ├── tests/
-│   └── main_test.rs    # 集成测试（⚠️ 当前无法编译，见 §9）
+│   └── main_test.rs    # 集成测试（17 个测试函数）
 └── target/             # 构建产物目录（git 忽略）
 ```
 
@@ -89,7 +89,8 @@ git-cz-ai/
 | `build_commit_types` | `() -> Vec<(&'static str, &'static str)>` | 返回 11 种提交类型 `(类型名, 英文描述)`：`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`chore`、`ci`、`build`、`revert` |
 | `format_commit_types` | `(Vec<(&str, &str)>) -> Vec<String>` | 按**最长类型名 + 4** 的宽度左对齐格式化，如 `"feat     - A new feature"`；空列表返回空 Vec |
 | `build_commit_message` | `(commit_type, scope, description, body, footer) -> String` | 拼接 Conventional Commits 消息 |
-| `perform_commit` | `(repo_path: &Path, full_commit_message: &str) -> Result<(), Box<dyn Error>>` | 对指定仓库路径执行 Git 提交 |
+| `ensure_staged_changes` | `(repo: &Repository) -> Result<(), Box<dyn Error>>` | 严格语义预检：HEAD tree 与 index 的 diff 非空即有 staged changes；无 HEAD（空仓库）以空树为基线；无 staged 时报错 `Your git repository is clean` |
+| `perform_commit` | `(repo_path: &Path, full_commit_message: &str) -> Result<(), Box<dyn Error>>` | 对指定仓库路径执行 Git 提交（先经 `ensure_staged_changes` 校验） |
 
 ### 5.2 提交消息格式（`build_commit_message`）
 
@@ -106,13 +107,13 @@ git-cz-ai/
 ### 5.3 Git 提交流程（`perform_commit`）
 
 1. `Repository::open(repo_path)` 打开仓库；
-2. `repo.statuses(None)` 检查工作区状态——**状态为空则报错** `"Nothing to commit, working directory clean"`（返回 `Err`，不 panic）；
+2. `ensure_staged_changes(&repo)?` 做**严格语义预检**：对比 HEAD tree 与 index 的 diff，**无任何 staged changes 则报错** `"Your git repository is clean"`（返回 `Err`，不 panic）。untracked 文件与未 `git add` 的工作区修改不计入；无 HEAD（空仓库）时以空树为基线；
 3. `index.write_tree()` 将**索引（index/staging 区）** 内容写入 tree；
 4. 读取 git 配置中的 `user.name` / `user.email` 构造签名（`Signature::now`）；
 5. 通过 `repo.head()` 找到 HEAD 指向的父提交；
 6. `repo.commit(Some("HEAD"), ...)` 创建新提交并更新 HEAD。
 
-> **关键行为**：该函数只提交**已暂存（staged）的内容**——它不会自动执行 `git add`。详见 §10 的注意事项。
+> **关键行为**：该函数只提交**已暂存（staged）的内容**——它不会自动执行 `git add`；无 staged 的提交会被步骤 2 的严格预检拦截（详见 §10 条目 1）。
 
 ### 5.4 交互流程（`src/main.rs`）
 
@@ -186,7 +187,7 @@ flowchart TD
 cargo build            # 调试构建（产物：target/debug/git-cz）
 cargo build --release  # 发布构建（产物：target/release/git-cz）
 cargo run              # 运行交互式 CLI
-cargo test             # ⚠️ 当前失败，见 §9
+cargo test             # 运行测试（17 个测试函数全部通过）
 cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 ```
 
@@ -199,7 +200,7 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 
 ## 9. 测试策略
 
-- **类型**：集成测试（`tests/main_test.rs`），共 **11 个测试函数**，使用 `tempfile::tempdir()` 创建临时 Git 仓库进行真实提交验证。
+- **类型**：集成测试（`tests/main_test.rs`），共 **17 个测试函数**，使用 `tempfile::tempdir()` 创建临时 Git 仓库进行真实提交验证。
 - **框架**：Rust 标准测试（`#[test]`），无第三方测试框架、无覆盖率工具配置。
 
 | 测试函数 | 覆盖点 |
@@ -215,30 +216,29 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 | `test_perform_commit_no_changes` | 无变更时报错及错误消息断言 |
 | `test_full_workflow` | 端到端：建仓 → 暂存 → 提交 → 校验 |
 | `test_perform_commit_invalid_path` | 无效路径 `should_panic` |
+| `test_ensure_staged_changes_with_staged` | 有 staged 文件（已 `git add`）时校验通过 |
+| `test_ensure_staged_changes_clean` | 无任何变更时报错 `Your git repository is clean` |
+| `test_ensure_staged_changes_untracked_only` | 仅 untracked 文件（未 add）不计入 staged，报错 |
+| `test_ensure_staged_changes_workdir_modification_only` | 仅工作区修改（未 add）不计入 staged，报错 |
+| `test_ensure_staged_changes_empty_repo_clean` | 空仓库无 staged 时报错 |
+| `test_ensure_staged_changes_empty_repo_staged` | 空仓库已 add 文件时校验通过（以空树为基线） |
 
-### ⚠️ 严重问题：测试当前无法编译
-
-`build_commit_message` 的库层签名为 **5 个参数**（含 `footer`），但测试文件中仍按 **4 个参数**（无 `footer`）调用，共 **7 处**，全部报 `E0061`（参数数量不匹配）。具体位置（`tests/main_test.rs`）：第 76、82、88 行（`test_build_commit_message`）、第 95、104、110 行（`test_build_commit_message_edge_cases`）、第 250 行（`test_full_workflow`）。
-
-- 影响：`cargo test` 无法运行，所有测试（含可用的 4 个 `perform_commit`/`format_commit_types` 测试）均被阻塞。
-- 推测：库层新增 `footer` 参数后测试未同步更新（根据代码差异推断）。
-- **修复方向**：为这 7 处调用补上第 5 个参数（空字符串 `""` 即可），并同步更新相应断言（例如 `test_build_commit_message` 中期望输出需追加 footer 空串处理；全空输入断言 `": "` 目前与 5 参数签名 + 4 空参 + footer 空串的结果一致，仍需回归验证）。
+- 辅助函数 `init_repo_with_initial_commit(path: &Path) -> Repository`：创建临时仓库并预置空 initial commit，供测试复用。
 
 ---
 
 ## 10. 已知问题与注意事项
 
-1. **测试编译失败（最高优先级）**：见 §9，`cargo test` 当前不可用。
-2. **`perform_commit` 不执行暂存（staging）**：它直接对 index 写 tree 并提交。若工作区有修改但未 `git add`，`statuses` 非空不会触发报错，但提交内容将基于当前 index（可能为空或过期内容），**存在产生空提交/错误内容提交的隐患**。代码注释与提示中均未提醒用户先暂存。
-3. **`build_commit_message` 无输入校验**：全空输入产生 `": "` 这种无意义消息（测试已断言该行为，属已知设计）。
-4. **空仓库场景**：`perform_commit` 依赖 `repo.head()` 获取父提交；在无任何提交的仓库中会出错（测试通过预置 initial commit 规避）。
-5. **README 信息缺失**：仅一行 fork 来源说明，无安装、使用、配置文档。
-6. **「AI」名不副实**：代码中无任何 AI 能力（见 §1），对外宣传/命名与实现存在差距（根据代码推断）。
-7. **重复声明**：`Cargo.toml` 中 `tempfile` 同时在 `[dependencies]` 与 `[dev-dependencies]` 声明，冗余但不影响构建。
-8. **编辑器模式边界**：body 输入 `e` 时若 `EDITOR` 指向不存在的命令，`Command::status()` 报错会中断流程（无友好提示）；编辑器非零退出仅告警。
-9. **过滤闭包大小写敏感**：`QuerySelector` 过滤使用 `contains`，输入大写与小写不互通（如输入 `FEAT` 匹配不到 `feat`）。
-10. **Git 仓库状态**：当前检出分支为 `dev`，另存在 `main` 分支；历史仅 1 个提交（`chore: init repo`）；未配置远程（`git branch -a` 无 `remotes/` 条目）。
-11. **构建前置条件**：`openssl vendored` 需要 C 编译器（`cc`）；跨平台构建在 Windows 上依赖 `winapi` 相关 crate（见 lock 中 `crossterm_winapi` 等）。
+1. **`perform_commit` 不执行暂存（staging）——已解决**：旧版直接对 index 写 tree 并提交，无 staged 时存在产生空提交/错误内容提交的隐患；现已通过 `ensure_staged_changes` 的严格语义检查在提交前拦截（无任何 staged changes 时报错 `Your git repository is clean`，不会产生空提交）。注意：该函数仍不会自动执行 `git add`，用户需先自行暂存。
+2. **`build_commit_message` 无输入校验**：全空输入产生 `": "` 这种无意义消息（测试已断言该行为，属已知设计）。
+3. **空仓库场景**：`perform_commit` 依赖 `repo.head()` 获取父提交；在无任何提交的仓库中会出错（测试通过预置 initial commit 规避）。
+4. **README 信息缺失**：仅一行 fork 来源说明，无安装、使用、配置文档。
+5. **「AI」名不副实**：代码中无任何 AI 能力（见 §1），对外宣传/命名与实现存在差距（根据代码推断）。
+6. **重复声明**：`Cargo.toml` 中 `tempfile` 同时在 `[dependencies]` 与 `[dev-dependencies]` 声明，冗余但不影响构建。
+7. **编辑器模式边界**：body 输入 `e` 时若 `EDITOR` 指向不存在的命令，`Command::status()` 报错会中断流程（无友好提示）；编辑器非零退出仅告警。
+8. **过滤闭包大小写敏感**：`QuerySelector` 过滤使用 `contains`，输入大写与小写不互通（如输入 `FEAT` 匹配不到 `feat`）。
+9. **Git 仓库状态**：当前检出分支为 `dev`，另存在 `main` 分支（仍停留在初始提交）；`dev` 历史含 7 个提交（含本次 staged-changes 功能的 `feat` 与 `docs` 提交）；未配置远程（`git branch -a` 无 `remotes/` 条目）。
+10. **构建前置条件**：`openssl vendored` 需要 C 编译器（`cc`）；跨平台构建在 Windows 上依赖 `winapi` 相关 crate（见 lock 中 `crossterm_winapi` 等）。
 
 ---
 
