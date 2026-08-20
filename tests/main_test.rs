@@ -1,6 +1,6 @@
 use git2::Repository;
 use git2::Signature;
-use git_cz_ai::ai::{build_ai_prompt, parse_llm_response};
+use git_cz_ai::ai::{build_ai_prompt, get_staged_diff, parse_llm_response};
 use git_cz_ai::{
     build_commit_message, build_commit_types, ensure_staged_changes, format_commit_types,
     perform_commit,
@@ -419,4 +419,18 @@ fn test_parse_llm_response_content_not_array() {
     let body = r#"{"choices":[{"message":{"content":"{\"a\": 1}"}}]}"#;
     let err = parse_llm_response(body).unwrap_err();
     assert_eq!(err.to_string(), "llm api response is not a json string");
+}
+
+#[test]
+fn test_get_staged_diff() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = init_repo_with_initial_commit(temp_dir.path());
+
+    std::fs::write(temp_dir.path().join("a.txt"), "v1").unwrap();
+    let mut index = repo.index().unwrap();
+    index.add_path(Path::new("a.txt")).unwrap();
+    index.write().unwrap();
+
+    let diff = get_staged_diff(temp_dir.path()).unwrap();
+    assert!(diff.contains("a.txt"), "diff 应包含新增文件名");
 }

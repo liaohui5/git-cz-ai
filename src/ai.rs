@@ -78,3 +78,27 @@ pub fn parse_llm_response(body: &str) -> Result<Vec<String>, Box<dyn Error>> {
     // 回退：响应体本身就是字符串数组
     serde_json::from_value(value).map_err(|_| parse_err())
 }
+
+/// 执行 `git diff --cached` 获取已暂存变更。
+/// stdout 为空（无 staged changes）时报错，提示用户先 git add。
+pub fn get_staged_diff(repo_path: &Path) -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git")
+        .arg("diff")
+        .arg("--cached")
+        .current_dir(repo_path)
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git diff --cached failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let stdout = String::from_utf8(output.stdout)?;
+    if stdout.trim().is_empty() {
+        return Err("No staged changes. Please 'git add' your files first.".into());
+    }
+    Ok(stdout)
+}
