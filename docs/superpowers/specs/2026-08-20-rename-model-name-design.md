@@ -48,9 +48,9 @@
 
 1. `cargo build` 编译通过、无警告
 2. `cargo test` 23/23 通过（无回归——测试不涉及 CLI 字段名）
-3. `target/debug/git-cz ai --help` 输出含 `--model-name`、不含 `--model-name`
+3. `target/debug/git-cz ai --help` 输出含 `--model-name`；不再出现旧参数名
 4. 手动 mock 验证：`--model-name=gpt-test` 正常走完流程，请求体含 `"model": "gpt-test"`
-5. `grep -rn "model_name\|model-name" .`（排除 `target/`）确认无残留
+5. `grep -rn "model_name\|model-name" .`（排除 `target/`）命中多处——新名引用已全面就位（非残留）
 
 ## 非目标（YAGNI）
 

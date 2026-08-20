@@ -70,7 +70,7 @@
 - [ ] **步骤 5：验证 CLI 参数名**
 
 运行：`target/debug/git-cz ai --help`
-预期：帮助输出含 `--model-name <MODEL_NAME>`；**不含** `--model-name`
+预期：帮助输出含 `--model-name <MODEL_NAME>`；不再出现旧参数名
 
 - [ ] **步骤 6：Commit**
 
@@ -129,7 +129,7 @@ git commit -m "refactor: rename model_name field to model_name"
 - [ ] **步骤 8：残留扫描**
 
 运行：`grep -rn "model_name\|model-name" README.md AGENTS.md docs/ src/`
-预期：**无输出**（所有引用已更新；注意 `target/` 不在扫描范围内）
+预期：**命中多处**（新名引用已全面就位；`target/` 不在扫描范围内）
 
 - [ ] **步骤 9：Commit**
 
