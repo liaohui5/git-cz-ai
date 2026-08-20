@@ -54,11 +54,11 @@ git-cz
 git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --model-name=<MODEL>
 ```
 
-| 参数 | 必填 | 说明 |
+| 参数 | 是否必填 | 说明 |
 |------|------|------|
-| `--api-endpoint` | ✅ | LLM API 端点，如 `https://api.openai.com/v1/chat/completions` |
-| `--api-token` | ✅ | API 令牌；未提供时回退到环境变量 `GIT_CZ_AI_OPENAI_API_KEY` |
-| `--model-name` | ✅ | 模型名称，如 `gpt-5-mini` |
+| `--api-endpoint` | 可选 | LLM API 端点；未提供时回退到配置文件 `api_endpoint` |
+| `--api-token` | 可选 | API 令牌；未提供时回退到环境变量 `GIT_CZ_AI_OPENAI_API_KEY`，再回退到配置文件 `api_token` |
+| `--model-name` | 可选 | 模型名称；未提供时回退到配置文件 `model_name` |
 
 工作流程：
 

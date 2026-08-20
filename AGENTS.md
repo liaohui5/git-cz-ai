@@ -219,7 +219,7 @@ git-cz ai [--api-endpoint=<url>] [--api-token=<token>] [--model-name=<model>]
 
 ## 6. 数据模型与存储
 
-- **无数据库、无缓存、无配置文件**。
+- **无数据库、无缓存**；用户配置文件存于 `~/.config/git-cz/config.toml`（仓库内不内置配置文件）。
 - 项目唯一的「数据」载体是 **Git 仓库本身**：通过 `git2` 操作 `.git` 目录（索引、tree、commit 对象）。
 - 作者签名数据来源为 Git 全局/仓库级配置 `user.name` 与 `user.email`（经 `repo.config().get_string()` 读取）。
 
