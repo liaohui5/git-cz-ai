@@ -163,7 +163,7 @@ pub fn load_config(path: &Path) -> Result<Config, Box<dyn Error>> {
 }
 ```
 
-> `config_path` 与 `init_config`（任务 2）、`resolve_ai_args`（任务 3）暂未定义——本任务先实现 `load_config` 及其测试，其余函数在后续任务追加。若编译报 `unused` 警告属正常（后续任务会用上）。
+> `init_config`（任务 2）、`resolve_ai_args`（任务 3）暂未定义——本任务先实现 `config_path` 与 `load_config` 及其测试，其余函数在后续任务追加。若编译报 `unused` 警告属正常（后续任务会用上）。
 
 - [ ] **步骤 5：运行测试验证通过**
 
