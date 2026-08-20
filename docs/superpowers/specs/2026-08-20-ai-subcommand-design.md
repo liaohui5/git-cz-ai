@@ -8,12 +8,12 @@
 
 当前 `git-cz` 只有一套固定的交互式提交流程（手动选择类型/scope/描述）。项目名中的 "ai" 尚无任何 AI 能力。本次新增 `ai` 子命令：把已暂存变更的 `git diff` 交给 LLM API，由其生成一组 Conventional Commits 候选，用户命令行选择一条后自动提交。
 
-**目标**：`git-cz ai --api-endpoint="https://api.openai.com/v1/chat/completions" --api-token="sk-xxx" --api-model="gpt-5-mini"` 即可完成「取 diff → 生成候选 → 选择 → 提交」全流程。
+**目标**：`git-cz ai --api-endpoint="https://api.openai.com/v1/chat/completions" --api-token="sk-xxx" --model-name="gpt-5-mini"` 即可完成「取 diff → 生成候选 → 选择 → 提交」全流程。
 
 ## 需求要点（已与用户逐项确认）
 
 1. **diff 来源**：`git diff --cached`（仅已暂存内容），与 `perform_commit` 只提交 staged 内容的语义一致。
-2. **token 回退**：`--api-token` 未传时回退到环境变量 `GIT_CZ_AI_OPENAI_API_KEY`；`--api-endpoint`、`--api-model` 必填。
+2. **token 回退**：`--api-token` 未传时回退到环境变量 `GIT_CZ_AI_OPENAI_API_KEY`；`--api-endpoint`、`--model-name` 必填。
 3. **提示词**：用户提供的 markdown 提示词**原样嵌入代码**（不改写），仅将 `{{diff}}` 占位符替换为实际 diff 内容。
 4. **JSON 解析失败**：立即退出程序并显示错误信息 `llm api response is not a json string`（退出码非零）。
 5. **候选列表**：解析成功的 `Vec<String>` 用 promkit `QuerySelector` 展示供选择。
@@ -65,7 +65,7 @@ struct AiArgs {
     api_token: String,
     /// 模型名称，如 gpt-5-mini
     #[arg(long)]
-    api_model: String,
+    model_name: String,
 }
 ```
 
@@ -75,7 +75,7 @@ struct AiArgs {
 ### 数据流
 
 ```
-git-cz ai --api-endpoint=... --api-token=... --api-model=...
+git-cz ai --api-endpoint=... --api-token=... --model-name=...
   → clap 解析参数
   → get_staged_diff(".")              # git diff --cached
   → build_ai_prompt(diff)             # {{diff}} 替换
@@ -97,7 +97,7 @@ git-cz ai --api-endpoint=... --api-token=... --api-model=...
 
 | 场景 | 行为 |
 |------|------|
-| 缺 `--api-endpoint` / `--api-model` | clap 报错退出 |
+| 缺 `--api-endpoint` / `--model-name` | clap 报错退出 |
 | 缺 `--api-token` 且环境变量也没有 | clap 报错退出 |
 | 无 staged changes | 打印 `No staged changes. Please 'git add' your files first.`，退出非零 |
 | HTTP 非 200 / 网络错误 | 打印状态码与响应体，退出非零 |
@@ -146,7 +146,7 @@ ureq = "2"
 - `cargo build` 成功。
 - 手动验证：
   - `cargo run -- ai`（缺参）→ clap 报错退出。
-  - `cargo run -- ai --api-endpoint=... --api-model=...`（无 token、无环境变量）→ clap 报错退出。
+  - `cargo run -- ai --api-endpoint=... --model-name=...`（无 token、无环境变量）→ clap 报错退出。
   - 无 staged 的仓库 → 打印 `No staged changes. Please 'git add' your files first.`，非零退出。
   - 有 staged 的仓库 + 本地 mock API → 展示候选列表；Enter 提交成功；Ctrl-C 退出不提交。
   - 指向返回非法 JSON 的 mock API → 打印 `llm api response is not a json string` 非零退出。

@@ -367,7 +367,7 @@ struct AiArgs {
     api_token: String,
     /// 模型名称，如 gpt-5-mini
     #[arg(long)]
-    api_model: String,
+    model_name: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -390,7 +390,7 @@ fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
         .set("Authorization", &format!("Bearer {}", args.api_token))
         .set("Content-Type", "application/json")
         .send_json(serde_json::json!({
-            "model": args.api_model,
+            "model": args.model_name,
             "messages": [{ "role": "user", "content": prompt }],
         }));
 
@@ -620,18 +620,18 @@ HTTPServer(("127.0.0.1", 8123), Handler).serve_forever()
 
 # 场景 1：缺参 → clap 报错
 cargo run -- ai
-# 预期：error: the following required arguments were not provided: --api-endpoint, --api-token, --api-model
+# 预期：error: the following required arguments were not provided: --api-endpoint, --api-token, --model-name
 
 # 场景 2：缺 token 且无环境变量 → clap 报错
-cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --api-model=gpt-test
+cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --model-name=gpt-test
 # 预期：error: the following required arguments were not provided: --api-token
 
 # 场景 3：无 staged changes（干净仓库）
-cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --api-token=sk-test --api-model=gpt-test
+cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --api-token=sk-test --model-name=gpt-test
 # 预期：No staged changes. Please 'git add' your files first. 退出码非零
 
 # 场景 4：正常流程（先 echo x > a.txt && git add a.txt）
-cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --api-token=sk-test --api-model=gpt-test
+cargo run -- ai --api-endpoint=http://127.0.0.1:8123/v1/chat/completions --api-token=sk-test --model-name=gpt-test
 # 预期：显示 3 条候选 → Enter 选中第一条 → Commit successful! → git log -1 验证提交消息
 
 # 场景 5：Ctrl-C（重复场景 4，在候选列表按 Ctrl-C）

@@ -31,7 +31,7 @@ let response = ureq::post(&args.api_endpoint)
     .set("Authorization", &format!("Bearer {}", args.api_token))
     .set("Content-Type", "application/json")
     .send_json(serde_json::json!({
-        "model": args.api_model,
+        "model": args.model_name,
         "messages": [{ "role": "user", "content": prompt }],
     }));
 

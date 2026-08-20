@@ -174,7 +174,7 @@ flowchart TD
 **数据流**（`run_ai`）：
 
 ```
-git-cz ai --api-endpoint=<url> [--api-token=<token>] --api-model=<model>
+git-cz ai --api-endpoint=<url> [--api-token=<token>] --model-name=<model>
   → get_staged_diff(".")        # git diff --cached，无 staged 即退出（非零）
   → build_ai_prompt(diff)        # {{diff}} 替换
   → ureq POST <endpoint>         # Authorization: Bearer <token>，body: {model, messages:[{role:user, content:prompt}]}
@@ -293,4 +293,4 @@ cargo check            # 仅编译检查（当前可通过，2026-07 验证）
 - 提交类型全集（11 种）：`feat` `fix` `docs` `style` `refactor` `perf` `test` `chore` `ci` `build` `revert`。
 - scope 建议词（12 个）：`app` `core` `ui` `db` `api` `frontend` `backend` `config` `build` `sec` `infra` `deps`。
 - footer 类型（2 种）：`fix`、`close`，格式 `类型: #编号`。
-- `git-cz ai` 子命令参数：`--api-endpoint <URL>`（必填）、`--api-token <TOKEN>`（必填，可经环境变量 `GIT_CZ_AI_OPENAI_API_KEY` 回退）、`--api-model <MODEL>`（必填）。调用示例：`git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --api-token=sk-xxx --api-model=gpt-5-mini`。
+- `git-cz ai` 子命令参数：`--api-endpoint <URL>`（必填）、`--api-token <TOKEN>`（必填，可经环境变量 `GIT_CZ_AI_OPENAI_API_KEY` 回退）、`--model-name <MODEL>`（必填）。调用示例：`git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --api-token=sk-xxx --model-name=gpt-5-mini`。

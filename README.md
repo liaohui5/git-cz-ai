@@ -51,14 +51,14 @@ git-cz
 ### AI 模式
 
 ```bash
-git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --api-model=<MODEL>
+git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --model-name=<MODEL>
 ```
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--api-endpoint` | ✅ | LLM API 端点，如 `https://api.openai.com/v1/chat/completions` |
 | `--api-token` | ✅ | API 令牌；未提供时回退到环境变量 `GIT_CZ_AI_OPENAI_API_KEY` |
-| `--api-model` | ✅ | 模型名称，如 `gpt-5-mini` |
+| `--model-name` | ✅ | 模型名称，如 `gpt-5-mini` |
 
 工作流程：
 
@@ -72,11 +72,11 @@ git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --api-model=<MODEL>
 git-cz ai \
   --api-endpoint=https://api.openai.com/v1/chat/completions \
   --api-token=sk-xxx \
-  --api-model=gpt-5-mini
+  --model-name=gpt-5-mini
 
 # 或用环境变量提供 token
 export GIT_CZ_AI_OPENAI_API_KEY=sk-xxx
-git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --api-model=gpt-5-mini
+git-cz ai --api-endpoint=https://api.openai.com/v1/chat/completions --model-name=gpt-5-mini
 ```
 
 ## 环境变量

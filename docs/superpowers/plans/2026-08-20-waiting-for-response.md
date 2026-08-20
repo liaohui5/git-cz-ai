@@ -38,7 +38,7 @@
         .set("Authorization", &format!("Bearer {}", args.api_token))
         .set("Content-Type", "application/json")
         .send_json(serde_json::json!({
-            "model": args.api_model,
+            "model": args.model_name,
             "messages": [{ "role": "user", "content": prompt }],
         }));
 
@@ -132,7 +132,7 @@ python3 /tmp/mock_llm_status.py ok &
 # echo x > a.txt && git add a.txt
 target/debug/git-cz ai \
   --api-endpoint=http://127.0.0.1:8124/v1/chat/completions \
-  --api-token=sk-test --api-model=gpt-test
+  --api-token=sk-test --model-name=gpt-test
 ```
 
 预期（stderr）：
@@ -149,7 +149,7 @@ kill %1   # 停掉 ok mock
 python3 /tmp/mock_llm_status.py error &
 target/debug/git-cz ai \
   --api-endpoint=http://127.0.0.1:8124/v1/chat/completions \
-  --api-token=sk-test --api-model=gpt-test
+  --api-token=sk-test --model-name=gpt-test
 ```
 
 预期（stderr）：`Request has been sent, waiting for response` + `llm api error: HTTP 500: ...`，**无** `Response received`，退出码非零。
@@ -160,7 +160,7 @@ target/debug/git-cz ai \
 kill %1   # 停掉 error mock，不启动任何服务器
 target/debug/git-cz ai \
   --api-endpoint=http://127.0.0.1:8124/v1/chat/completions \
-  --api-token=sk-test --api-model=gpt-test
+  --api-token=sk-test --model-name=gpt-test
 ```
 
 预期（stderr）：`Request has been sent, waiting for response` + `llm api request failed: ...`，**无** `Response received`，退出码非零。
