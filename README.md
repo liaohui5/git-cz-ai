@@ -5,7 +5,7 @@
 - **交互式模式**：通过终端向导逐步填写提交信息（类型、范围、描述、正文、页脚），生成符合 [Conventional Commits](https://www.conventionalcommits.org/) 规范的提交消息并执行 `git commit`。
 - **AI 模式**（`git-cz ai`）：读取已暂存（staged）的 diff，调用 OpenAI 兼容的 LLM API 生成多条提交信息候选，由你在命令行中选择，Enter 自动提交 / Ctrl-C 退出。
 
-> 灵感来自 [k3ii/git-cz](https://github.com/k3ii/git-cz)
+> 灵感来自 [k3ii/git-cz](https://github.com/k3ii/git-cz) 和 [cz-git](https://github.com/Zhengqbbb/cz-git)
 
 ---
 
@@ -24,14 +24,16 @@
 需要 Rust 工具链（edition 2021）,`openssl` 采用 `vendored` 特性静态编译，构建时需 C 编译器（`cc`），无需系统预装 OpenSSL。
 
 ```bash
-# 构建（产物：target/release/git-cz）
-cargo build --release
-
-# 或直接安装到 PATH
-cargo install --path .
+cargo install git-cz-ai
 ```
 
 ## 使用
+
+```sh
+git-cz # 手动选择提交类型+输入改动范围/提交信息
+git-cz ai # 自动选择提交类型+输入改动范围/提交
+git-cz --init-config # 初始大模型接口参数配置文件 ~/.config/git-cz/config.toml
+```
 
 ### 交互式模式
 
@@ -41,12 +43,11 @@ git-cz
 
 按向导依次选择/填写：提交类型 → scope（可选）→ description → body（输入 `e` 打开编辑器）→ footer（可选）→ 确认提交。
 
-> ⚠️ 该模式**不会自动 `git add`**。请先暂存你的变更：
->
-> ```bash
-> git add .
-> git-cz
-> ```
+<div align="center">
+  <picture>
+    <img alt="preview" src="https://raw.githubusercontent.com/liaohui5/git-cz/main/preview.gif">
+  </picture>
+</div>
 
 ### AI 模式
 
@@ -62,7 +63,7 @@ git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --model-name=<MODEL>
 
 工作流程：
 
-1. 读取暂存区 diff（`git diff --cached`）；无 staged changes 时报错退出
+1. 读取暂存区 diff（`git diff --cached`）；无 staged changes 时退出
 2. 将 diff 嵌入内置提示词模板，请求 LLM 生成 3–6 条符合 Conventional Commits 的候选（JSON 字符串数组）；请求发出后提示 `Request has been sent, waiting for response`，响应成功返回后提示 `Response received`（均输出到 stderr）
 3. 命令行展示候选列表（支持文本过滤），**Enter 选中即自动提交，Ctrl-C 退出不提交**
 
