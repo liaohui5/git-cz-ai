@@ -35,7 +35,7 @@ struct AiArgs {
     api_token: String,
     /// 模型名称，如 gpt-5-mini
     #[arg(long)]
-    api_model: String,
+    model_name: String,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +59,7 @@ fn run_ai(args: &AiArgs) -> Result<(), Box<dyn std::error::Error>> {
         .set("Authorization", &format!("Bearer {}", args.api_token))
         .set("Content-Type", "application/json")
         .send_json(serde_json::json!({
-            "model": args.api_model,
+            "model": args.model_name,
             "messages": [{ "role": "user", "content": prompt }],
         }));
 
