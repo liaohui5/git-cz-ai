@@ -1,0 +1,142 @@
+# `api_model` → `model_name` 字段重命名实现计划
+
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
+
+**目标：** 将 `AiArgs` struct 的 `api_model` 字段改名为 `model_name`，CLI 参数同步改为 `--model-name`，并更新全部文档引用（README、AGENTS.md、历史 spec/plan）。
+
+**架构：** 纯重命名，无行为逻辑变化。`src/main.rs` 改字段名与使用点（`#[arg(long)]` 保持，clap 自动生成 `--model-name`）；6 个文档文件把 `api_model`/`--api-model` 全部替换为 `model_name`/`--model-name`。
+
+**技术栈：** Rust + clap 4（derive）。
+
+**设计规格：** `docs/superpowers/specs/2026-08-20-rename-api-model-design.md`
+
+---
+
+## 文件结构
+
+| 文件 | 动作 | 职责 |
+|------|------|------|
+| `src/main.rs` | 修改（38、62 行） | `api_model: String` → `model_name: String`；`args.api_model` → `args.model_name` |
+| `README.md` | 修改（54、61、75、79 行） | `--api-model` → `--model-name` |
+| `AGENTS.md` | 修改（177、296 行） | `--api-model` → `--model-name` |
+| `docs/superpowers/specs/2026-08-20-ai-subcommand-design.md` | 修改（11、16、68、78、100、149 行） | 字段与参数引用 |
+| `docs/superpowers/plans/2026-08-20-ai-subcommand.md` | 修改（370、393、623、626、630、634 行） | 字段、使用点、参数引用 |
+| `docs/superpowers/specs/2026-08-20-waiting-for-response-design.md` | 修改（34 行） | `args.api_model` → `args.model_name` |
+| `docs/superpowers/plans/2026-08-20-waiting-for-response.md` | 修改（41、135、152、163 行） | `args.api_model`、命令示例 |
+
+> 所有替换均为机械性文本替换：`api_model` → `model_name`（代码标识符）、`--api-model` → `--model-name`（CLI 参数）。**不要**动 `--api-endpoint`、`--api-token`、`GIT_CZ_AI_OPENAI_API_KEY`、JSON 请求体键 `"model"`。
+
+---
+
+### 任务 1：代码字段改名 + 编译测试
+
+**文件：**
+- 修改：`src/main.rs`（38、62 行）
+
+- [ ] **步骤 1：修改字段声明**
+
+`src/main.rs` 第 38 行：
+
+```rust
+    /// 模型名称，如 gpt-5-mini
+    #[arg(long)]
+    model_name: String,
+```
+
+（原 `api_model: String,`；`#[arg(long)]` 保持不动——clap 自动将 `model_name` 转为 `--model-name`。）
+
+- [ ] **步骤 2：修改使用点**
+
+`src/main.rs` 第 62 行：
+
+```rust
+            "model": args.model_name,
+```
+
+（原 `"model": args.api_model,`；JSON 键 `"model"` 保持不变。）
+
+- [ ] **步骤 3：编译检查**
+
+运行：`cargo build`
+预期：编译通过，无警告
+
+- [ ] **步骤 4：运行全部测试**
+
+运行：`cargo test`
+预期：23 passed；0 failed（测试不涉及 CLI 字段名，无回归）
+
+- [ ] **步骤 5：验证 CLI 参数名**
+
+运行：`target/debug/git-cz ai --help`
+预期：帮助输出含 `--model-name <MODEL_NAME>`；**不含** `--api-model`
+
+- [ ] **步骤 6：Commit**
+
+```bash
+git add src/main.rs
+git commit -m "refactor: rename api_model field to model_name"
+```
+
+---
+
+### 任务 2：更新全部文档引用
+
+**文件：**
+- 修改：`README.md`、`AGENTS.md`、`docs/superpowers/specs/2026-08-20-ai-subcommand-design.md`、`docs/superpowers/plans/2026-08-20-ai-subcommand.md`、`docs/superpowers/specs/2026-08-20-waiting-for-response-design.md`、`docs/superpowers/plans/2026-08-20-waiting-for-response.md`
+
+- [ ] **步骤 1：更新 `README.md`**
+
+逐处替换（4 处，行号仅供参考）：
+
+| 行 | 原文 | 改为 |
+|----|------|------|
+| 54 | `--api-model=<MODEL>` | `--model-name=<MODEL>` |
+| 61 | `\| `--api-model` \| ✅ \| 模型名称，如 `gpt-5-mini` \|` | `\| `--model-name` \| ✅ \| 模型名称，如 `gpt-5-mini` \|` |
+| 75 | `--api-model=gpt-5-mini` | `--model-name=gpt-5-mini` |
+| 79 | `--api-model=gpt-5-mini` | `--model-name=gpt-5-mini` |
+
+- [ ] **步骤 2：更新 `AGENTS.md`**
+
+逐处替换（2 处）：
+
+| 行 | 原文 | 改为 |
+|----|------|------|
+| 177 | `--api-model=<model>` | `--model-name=<model>` |
+| 296 | `--api-model <MODEL>` 及 `--api-model=gpt-5-mini` | `--model-name <MODEL>` 及 `--model-name=gpt-5-mini` |
+
+- [ ] **步骤 3：更新 `docs/superpowers/specs/2026-08-20-ai-subcommand-design.md`**
+
+替换（6 处）：第 11、16、78、100、149 行的 `--api-model` → `--model-name`；第 68 行 `api_model: String,` → `model_name: String,`。
+
+- [ ] **步骤 4：更新 `docs/superpowers/plans/2026-08-20-ai-subcommand.md`**
+
+替换（6 处）：第 370 行 `api_model: String,` → `model_name: String,`；第 393 行 `args.api_model` → `args.model_name`；第 623 行错误预期文本、626、630、634 行命令中的 `--api-model` → `--model-name`。
+
+- [ ] **步骤 5：更新 `docs/superpowers/specs/2026-08-20-waiting-for-response-design.md`**
+
+第 34 行：`"model": args.api_model,` → `"model": args.model_name,`。
+
+- [ ] **步骤 6：更新 `docs/superpowers/plans/2026-08-20-waiting-for-response.md`**
+
+第 41 行：`"model": args.api_model,` → `"model": args.model_name,`；第 135、152、163 行命令中 `--api-model=gpt-test` → `--model-name=gpt-test`。
+
+- [ ] **步骤 7：残留扫描**
+
+运行：`grep -rn "api_model\|api-model" README.md AGENTS.md docs/ src/`
+预期：**无输出**（所有引用已更新）
+
+- [ ] **步骤 8：Commit**
+
+```bash
+git add README.md AGENTS.md docs/
+git commit -m "docs: rename --api-model to --model-name in all references"
+```
+
+---
+
+## 自检记录
+
+- **规格覆盖度**：代码字段（规格 §改动清单）→ 任务 1；CLI 参数验证 → 任务 1 步骤 5；文档 6 文件 → 任务 2 步骤 1-6；残留扫描 → 任务 2 步骤 7。✅
+- **占位符扫描**：所有步骤含具体代码/命令/预期，无「TODO」「待定」。✅
+- **类型一致性**：`args.model_name` 在所有文件中一致；`"model"` JSON 键未动。✅
+- **注意**：`grep -rn "api_model\|api-model"` 会命中 `target/` 下的构建产物——任务 2 步骤 7 已限定扫描范围为 `README.md AGENTS.md docs/ src/`。✅
