@@ -63,7 +63,7 @@ git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --api-model=<MODEL>
 工作流程：
 
 1. 读取暂存区 diff（`git diff --cached`）；无 staged changes 时报错退出
-2. 将 diff 嵌入内置提示词模板，请求 LLM 生成 3–6 条符合 Conventional Commits 的候选（JSON 字符串数组）
+2. 将 diff 嵌入内置提示词模板，请求 LLM 生成 3–6 条符合 Conventional Commits 的候选（JSON 字符串数组）；请求发出后提示 `Request has been sent, waiting for response`，响应成功返回后提示 `Response received`（均输出到 stderr）
 3. 命令行展示候选列表（支持文本过滤），**Enter 选中即自动提交，Ctrl-C 退出不提交**
 
 示例：
