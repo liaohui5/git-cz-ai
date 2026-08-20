@@ -12,7 +12,7 @@ keywords = ["git", "commitizen", "cli", "rust", "ai"]
 categories = ["development-tools"]
 
 [dependencies]
-git2 = "0.19.0"
+git2 = "0.20.4"
 promkit = "0.4.5"
 openssl = { version = "0.10", features = ["vendored"] }
 tempfile = "3.2"
