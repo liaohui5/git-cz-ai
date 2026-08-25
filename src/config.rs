@@ -97,3 +97,138 @@ pub fn merge_config(mut config1: APIConfig, config2: APIConfig) -> APIConfig {
     }
     config1
 }
+
+#[cfg(test)]
+mod config_test {
+    use super::{init_config, merge_config, APIConfig, DEFAULT_CONFIG_CONTENT};
+    use std::fs;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// 每个测试用例使用独立的临时目录，避免并行测试冲突
+    fn unique_temp_dir() -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("git-cz-test-{ts}-{seq}"));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn merge_config_overrides_all() {
+        let config1 = APIConfig {
+            api_endpoint: Some("https://old.com/v1".into()),
+            api_token: Some("old-token".into()),
+            model_name: Some("old-model".into()),
+        };
+        let config2 = APIConfig {
+            api_endpoint: Some("https://new.com/v1".into()),
+            api_token: Some("new-token".into()),
+            model_name: Some("new-model".into()),
+        };
+        let result = merge_config(config1, config2);
+        assert_eq!(result.api_endpoint.unwrap(), "https://new.com/v1");
+        assert_eq!(result.api_token.unwrap(), "new-token");
+        assert_eq!(result.model_name.unwrap(), "new-model");
+    }
+
+    #[test]
+    fn merge_config_partial_overrides() {
+        let config1 = APIConfig {
+            api_endpoint: Some("https://keep.com/v1".into()),
+            api_token: Some("keep-token".into()),
+            model_name: Some("keep-model".into()),
+        };
+        let config2 = APIConfig {
+            api_endpoint: None,
+            api_token: Some("override-token".into()),
+            model_name: None,
+        };
+        let result = merge_config(config1, config2);
+        assert_eq!(result.api_endpoint.unwrap(), "https://keep.com/v1");
+        assert_eq!(result.api_token.unwrap(), "override-token");
+        assert_eq!(result.model_name.unwrap(), "keep-model");
+    }
+
+    #[test]
+    fn merge_config_no_overrides() {
+        let config1 = APIConfig {
+            api_endpoint: Some("https://stable.com/v1".into()),
+            api_token: Some("stable-token".into()),
+            model_name: Some("stable-model".into()),
+        };
+        let config2 = APIConfig::default();
+        let result = merge_config(config1, config2);
+        assert_eq!(result.api_endpoint.unwrap(), "https://stable.com/v1");
+        assert_eq!(result.api_token.unwrap(), "stable-token");
+        assert_eq!(result.model_name.unwrap(), "stable-model");
+    }
+
+    #[test]
+    fn merge_config_overrides_with_none_in_config1() {
+        // config1 某些字段为 None，config2 提供值
+        let config1 = APIConfig::default();
+        let config2 = APIConfig {
+            api_endpoint: Some("https://set.com/v1".into()),
+            api_token: None,
+            model_name: Some("set-model".into()),
+        };
+        let result = merge_config(config1, config2);
+        assert_eq!(result.api_endpoint.unwrap(), "https://set.com/v1");
+        assert!(result.api_token.is_none());
+        assert_eq!(result.model_name.unwrap(), "set-model");
+    }
+
+    #[test]
+    fn init_config_creates_file() {
+        let dir = unique_temp_dir();
+        let config_path = dir.join("config.toml");
+
+        assert!(!config_path.exists());
+        init_config(&config_path).unwrap();
+        assert!(config_path.exists());
+
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(content, DEFAULT_CONFIG_CONTENT);
+
+        // cleanup
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn init_config_already_exists() {
+        let dir = unique_temp_dir();
+        let config_path = dir.join("config.toml");
+
+        // 先创建文件，写自定义内容
+        let custom_content = "custom = \"content\"\n";
+        fs::write(&config_path, custom_content).unwrap();
+        assert!(config_path.exists());
+
+        // 再次 init 不应覆盖
+        init_config(&config_path).unwrap();
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(content, custom_content, "existing file should not be overwritten");
+
+        // cleanup
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn default_config_has_expected_fields() {
+        // 验证默认配置内容是有效的 TOML
+        let config: APIConfig = toml::from_str(DEFAULT_CONFIG_CONTENT).unwrap();
+        assert!(config.api_endpoint.is_some());
+        assert!(config.api_token.is_some());
+        assert!(config.model_name.is_some());
+        assert_eq!(
+            config.api_endpoint.unwrap(),
+            "https://api.deepseek.com/v1/chat/completions"
+        );
+    }
+}

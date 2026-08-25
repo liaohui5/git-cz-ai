@@ -181,15 +181,17 @@ pub fn is_confirm_commit() -> bool {
 
 #[cfg(test)]
 mod manual_test {
+    use super::build_commit_message;
+
     #[test]
-    fn build_commit_message() {
+    fn build_commit_message_all_fields() {
         let commit_type = "feat".to_string();
         let scope = "(api)".to_string();
         let break_change_mark = "!".to_string();
         let message = "message".to_string();
         let body = "body".to_string();
         let footer = "footer".to_string();
-        let full_commit_message = super::build_commit_message(
+        let full_commit_message = build_commit_message(
             commit_type,
             scope,
             break_change_mark,
@@ -198,5 +200,97 @@ mod manual_test {
             footer,
         );
         assert_eq!(full_commit_message, "feat(api)!: message\n\nbody\n\nfooter");
+    }
+
+    #[test]
+    fn build_commit_message_without_scope_and_breaking() {
+        let full = build_commit_message(
+            "feat".into(),
+            String::new(),
+            String::new(),
+            "add feature".into(),
+            String::new(),
+            String::new(),
+        );
+        assert_eq!(full, "feat: add feature");
+    }
+
+    #[test]
+    fn build_commit_message_only_body() {
+        let full = build_commit_message(
+            "fix".into(),
+            String::new(),
+            String::new(),
+            "fix bug".into(),
+            "some long body text".into(),
+            String::new(),
+        );
+        assert_eq!(full, "fix: fix bug\n\nsome long body text");
+    }
+
+    #[test]
+    fn build_commit_message_only_footer() {
+        let full = build_commit_message(
+            "fix".into(),
+            String::new(),
+            String::new(),
+            "fix bug".into(),
+            String::new(),
+            "fix: #123".into(),
+        );
+        assert_eq!(full, "fix: fix bug\n\nfix: #123");
+    }
+
+    #[test]
+    fn build_commit_message_with_scope_and_breaking_only() {
+        let full = build_commit_message(
+            "feat".into(),
+            "(core)".into(),
+            "!".into(),
+            "breaking change".into(),
+            String::new(),
+            String::new(),
+        );
+        assert_eq!(full, "feat(core)!: breaking change");
+    }
+
+    #[test]
+    fn build_commit_message_all_empty() {
+        let full = build_commit_message(
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        );
+        assert_eq!(full, ": ");
+    }
+
+    #[test]
+    fn build_commit_message_body_and_footer_together() {
+        let full = build_commit_message(
+            "docs".into(),
+            "(readme)".into(),
+            String::new(),
+            "update docs".into(),
+            "detailed explanation".into(),
+            "close: #456".into(),
+        );
+        assert_eq!(full, "docs(readme): update docs\n\ndetailed explanation\n\nclose: #456");
+    }
+
+    #[test]
+    fn build_commit_message_multiline_body() {
+        let body = "line1\nline2\nline3".to_string();
+        let full = build_commit_message(
+            "refactor".into(),
+            String::new(),
+            String::new(),
+            "refactor code".into(),
+            body,
+            String::new(),
+        );
+        assert_eq!(full, "refactor: refactor code\n\nline1\nline2\nline3");
     }
 }

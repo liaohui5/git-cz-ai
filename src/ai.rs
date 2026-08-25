@@ -176,3 +176,99 @@ const AI_PROMPT_TEMPLATE: &str = r##"## 角色与任务
 pub fn build_ai_prompt(diff: &str) -> String {
     AI_PROMPT_TEMPLATE.replace("{{diff}}", diff)
 }
+
+#[cfg(test)]
+mod ai_test {
+    use super::{build_ai_prompt, parse_llm_api_response};
+
+    #[test]
+    fn build_ai_prompt_replaces_placeholder() {
+        let prompt = build_ai_prompt("@@ -1 +1 @@\n-feature\n+feature2\n");
+        // placeholder 已被 diff 内容替换
+        assert!(prompt.contains("@@ -1 +1 @@\n-feature\n+feature2\n"));
+        assert!(!prompt.contains("{{diff}}"));
+        // 模板头尾仍保留
+        assert!(prompt.starts_with("## 角色与任务"));
+        assert!(prompt.contains("根据下方提供的 **git diff 输出**"));
+    }
+
+    #[test]
+    fn build_ai_prompt_with_empty_diff() {
+        let prompt = build_ai_prompt("");
+        assert!(!prompt.contains("{{diff}}"));
+        assert!(prompt.contains("## 角色与任务"));
+    }
+
+    #[test]
+    fn build_ai_prompt_multiple_occurrences() {
+        // 模板中占位符只出现一次，但即使多次也应全部替换
+        let prompt = build_ai_prompt("a\nb\nc\n");
+        assert_eq!(prompt.matches("{{diff}}").count(), 0);
+        assert!(prompt.contains("a\nb\nc\n"));
+    }
+
+    #[test]
+    fn parse_llm_api_response_direct_array() {
+        let body = r#"["feat(ui): add login page","fix(api): fix auth bug"]"#;
+        let result = parse_llm_api_response(body).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                "feat(ui): add login page".to_string(),
+                "fix(api): fix auth bug".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_llm_api_response_openai_envelope() {
+        let body = r#"{"choices":[{"message":{"content":"[\"feat(auth): add login api\",\"docs: update readme\"]"}}]}"#;
+        let result = parse_llm_api_response(body).unwrap();
+        assert_eq!(
+            result,
+            vec![
+                "feat(auth): add login api".to_string(),
+                "docs: update readme".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_llm_api_response_invalid_json() {
+        let body = "this is not json";
+        let err = parse_llm_api_response(body).unwrap_err();
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
+    }
+
+    #[test]
+    fn parse_llm_api_response_content_not_array() {
+        // envelope 存在但 content 不是数组
+        let body = r#"{"choices":[{"message":{"content":"\"just a string\""}}]}"#;
+        let err = parse_llm_api_response(body).unwrap_err();
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
+    }
+
+    #[test]
+    fn parse_llm_api_response_array_of_non_strings() {
+        // 直接数组但元素非字符串
+        let body = r#"[1, 2, 3]"#;
+        let err = parse_llm_api_response(body).unwrap_err();
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
+    }
+
+    #[test]
+    fn parse_llm_api_response_envelope_content_invalid_json() {
+        // content 本身不是合法 JSON 数组
+        let body = r#"{"choices":[{"message":{"content":"not-a-json"}}]}"#;
+        let err = parse_llm_api_response(body).unwrap_err();
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
+    }
+
+    #[test]
+    fn parse_llm_api_response_empty_array() {
+        // 空数组也应当解析成功
+        let body = r#"[]"#;
+        let result = parse_llm_api_response(body).unwrap();
+        assert!(result.is_empty());
+    }
+}
