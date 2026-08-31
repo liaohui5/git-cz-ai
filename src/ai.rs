@@ -61,7 +61,14 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
     let prompt = build_ai_prompt(&diff);
     let body = send_request(merged_config, prompt)?;
     let result = parse_llm_api_response(&body)?;
-    let commit_message = select_commit_message(result);
+    let commit_message = match select_commit_message(result) {
+        Some(message) => message,
+        None => {
+            // Ctrl-C / Esc：主动取消，不是错误，不执行提交
+            println!("已取消，未提交");
+            return Ok(());
+        }
+    };
     git::perform_commit(&commit_message)
 }
 
@@ -104,7 +111,7 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
     Ok(result.unwrap())
 }
 
-pub fn select_commit_message(messages: Vec<String>) -> String {
+pub fn select_commit_message(messages: Vec<String>) -> Option<String> {
     let messages: Vec<&str> = messages.iter().map(|m| m.as_str()).collect();
     let len = messages.len();
 
@@ -114,8 +121,8 @@ pub fn select_commit_message(messages: Vec<String>) -> String {
             .prompt();
 
     match commit_message {
-        Ok(message) => String::from(message),
-        Err(_) => String::new(),
+        Ok(message) => Some(String::from(message)),
+        Err(_) => None,
     }
 }
 
