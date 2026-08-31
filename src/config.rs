@@ -27,7 +27,7 @@ pub fn handler() -> Result<(), Box<dyn Error>> {
 // config path is ~/.config/git-cz/config.toml
 pub fn get_config_path() -> Result<PathBuf, Box<dyn Error>> {
     // ensure HOME env var exists
-    let home_path = env::var("HOME").map_err(|_| "Cannot determine home directory")?;
+    let home_path = env::var("HOME").map_err(|_| "无法确定主目录（HOME 环境变量未设置）")?;
 
     // ~/.config
     let conf_path = PathBuf::from(home_path).join(".config");
@@ -71,11 +71,7 @@ pub fn load_config() -> Result<APIConfig, Box<dyn Error>> {
     let conf_path = get_config_path()?;
 
     if !conf_path.exists() {
-        return Err(format!(
-            "Config not found at {}, please init-config first",
-            conf_path.display()
-        )
-        .into());
+        return Err(format!("未找到配置文件 {}", conf_path.display()).into());
     }
 
     let content = fs::read_to_string(&conf_path)?;
@@ -230,5 +226,14 @@ mod config_test {
             config.api_endpoint.unwrap(),
             "https://api.deepseek.com/v1/chat/completions"
         );
+    }
+
+    #[test]
+    fn load_config_missing_file_returns_chinese_error() {
+        let dir = unique_temp_dir();
+        std::env::set_var("HOME", &dir);
+        let err = super::load_config().unwrap_err();
+        assert!(err.to_string().contains("未找到配置文件"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

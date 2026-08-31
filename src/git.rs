@@ -14,7 +14,7 @@ pub fn get_staged_diff() -> Result<String, Box<dyn Error>> {
     };
 
     if diff.deltas().len() == 0 {
-        return Err("No staged changes. Please 'git add' your files first.".into());
+        return Err("没有暂存变更，请先执行 git add".into());
     }
 
     let mut output = String::new();
@@ -45,7 +45,7 @@ pub fn has_staged_changes() -> Result<(), Box<dyn Error>> {
 
     let diff = repo.diff_tree_to_index(base_tree.as_ref(), Some(&index), None)?;
     if diff.deltas().len() == 0 {
-        return Err("No staged changes. Please 'git add' your files first.".into());
+        return Err("没有暂存变更，请先执行 git add".into());
     }
 
     Ok(())
