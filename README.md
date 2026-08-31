@@ -1,46 +1,94 @@
 # git-cz-ai
 
-一个用 Rust 编写的交互式 Git 提交信息生成器（Commitizen 风格 CLI 工具）。支持两种工作模式：
+<p align="center">
+  <b>English</b> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-- **交互式模式**：通过终端向导逐步填写提交信息（类型、范围、描述、正文、页脚），生成符合 [Conventional Commits](https://www.conventionalcommits.org/) 规范的提交消息并执行 `git commit`。
-- **AI 模式**（`git-cz ai`）：读取已暂存（staged）的 diff，调用 OpenAI 兼容的 LLM API 生成多条提交信息候选，由你在命令行中选择，Enter 自动提交 / Ctrl-C 退出。
+> An interactive Git commit message generator (Commitizen-style CLI) written in Rust.
 
-> 灵感来自 [k3ii/git-cz](https://github.com/k3ii/git-cz) 和 [cz-git](https://github.com/Zhengqbbb/cz-git)
+[![Crates.io Version](https://img.shields.io/crates/v/git-cz-ai)](https://crates.io/crates/git-cz-ai)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release workflow](https://github.com/liaohui5/git-cz-ai/actions/workflows/release-plz.yml/badge.svg)](https://github.com/liaohui5/git-cz-ai/actions/workflows/release-plz.yml)
 
----
+## Introduction
 
-## 特性
+`git-cz-ai` is a Command-line interface tool that helps you write
+[Conventional Commits](https://www.conventionalcommits.org/) compliant commit messages.
+It ships as a single binary named `git-cz` and supports two modes:
 
-- ✅ 11 种标准提交类型（`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `ci` / `build` / `revert`），带英文描述与对齐展示
-- ✅ scope 建议词（`app` / `core` / `ui` / `db` / `api` / `frontend` / `backend` / `config` / `build` / `sec` / `infra` / `deps`）
-- ✅ body 支持外部编辑器模式（输入 `e` 打开 `$EDITOR`，默认 `vim`，Windows 默认 `notepad`）
-- ✅ 可选 footer（`fix: #123` / `close: #456`），issue 号自动校验为整数
-- ✅ **只提交已暂存的内容**——无任何 staged changes 时直接报错退出，绝不产生空提交
-- ✅ `ai` 子命令：staged diff → LLM 生成候选（JSON 数组）→ 命令行选择 → 自动提交
+- **Interactive mode** — a terminal wizard that walks you through commit type, scope,
+  breaking-change marker, description, body, and footer, then runs `git commit` for you.
+- **AI mode** (`git-cz ai`) — reads the staged diff, asks an OpenAI-compatible LLM API to
+  generate 3–6 commit message candidates, lets you pick one, and commits on Enter.
 
-## 安装
+Inspired by [k3ii/git-cz](https://github.com/k3ii/git-cz) and [cz-git](https://github.com/Zhengqbbb/cz-git).
 
-需要 Rust 工具链（edition 2021）,`openssl` 采用 `vendored` 特性静态编译，构建时需 C 编译器（`cc`），无需系统预装 OpenSSL。
+## Features
+
+- ✅ 11 standard commit types (`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `chore` / `ci` / `build` / `revert`), each with an English description
+- ✅ Optional scope, e.g. `feat(parser)`
+- ✅ Optional breaking-change marker (`!`), e.g. `feat(core)!: ...`
+- ✅ Description required — empty input is rejected with a validation error
+- ✅ Body edited with your system editor via the `inquire` editor component
+- ✅ Optional footer (`fix: #123` / `close: #456`) with issue number validated as a number
+- ✅ **Commits only staged content** — exits with an error when nothing is staged, never creates empty commits
+- ✅ Works in a freshly `git init` repository with no commits yet (unborn branch)
+- ✅ `ai` subcommand: staged diff → LLM candidates (JSON array) → pick one → auto-commit
+- ✅ Loading spinner while waiting for the LLM response
+
+## Quick Start
+
+### Requirements
+
+- Rust toolchain (edition 2021). TLS is provided by `rustls` (bundled via `ureq`), so no system OpenSSL is required.
+
+### Installation
 
 ```bash
 cargo install git-cz-ai
 ```
 
-## 使用
+Or build from source:
 
-```sh
-git-cz # 手动选择提交类型+输入改动范围/提交信息
-git-cz ai # 自动选择提交类型+输入改动范围/提交
-git-cz init-config # 初始大模型接口参数配置文件 ~/.config/git-cz/config.toml
+```bash
+git clone https://github.com/liaohui5/git-cz-ai.git
+cd git-cz-ai
+cargo build --release
+# binary at target/release/git-cz
 ```
 
-### 交互式模式
+### Minimal example
+
+```bash
+# stage your changes first
+git add .
+
+# run the interactive wizard
+git-cz
+```
+
+```text
+✔ Select the type of change that you're committing?
+  feat: a new feature
+  ...
+```
+
+## Usage
+
+```sh
+git-cz                      # interactive wizard (manual mode)
+git-cz ai                   # AI-generated commit message candidates
+git-cz init-config          # create ~/.config/git-cz/config.toml
+```
+
+### Interactive mode
 
 ```bash
 git-cz
 ```
 
-按向导依次选择/填写：提交类型 → scope（可选）→ description → body（输入 `e` 打开编辑器）→ footer（可选）→ 确认提交。
+Follow the wizard: commit type → scope (optional) → breaking change (optional) →
+description → body (optional) → footer (optional) → confirm commit.
 
 <div align="center">
   <picture>
@@ -48,25 +96,26 @@ git-cz
   </picture>
 </div>
 
-### AI 模式
+### AI mode
 
 ```bash
 git-cz ai --api-endpoint=<URL> --api-token=<TOKEN> --model-name=<MODEL>
 ```
 
-| 参数 | 是否必填 | 说明 |
-|------|------|------|
-| `--api-endpoint` | 可选 | LLM API 端点；未提供时回退到配置文件 `api_endpoint` |
-| `--api-token` | 可选 | API 令牌；未提供时回退到配置文件 `api_token` |
-| `--model-name` | 可选 | 模型名称；未提供时回退到配置文件 `model_name` |
+| Argument         | Required | Description                                                |
+| ---------------- | -------- | ---------------------------------------------------------- |
+| `--api-endpoint` | optional | LLM API endpoint; falls back to config file `api_endpoint` |
+| `--api-token`    | optional | API token; falls back to config file `api_token`           |
+| `--model-name`   | optional | Model name; falls back to config file `model_name`         |
 
-工作流程：
+How it works:
 
-1. 读取暂存区 diff（`git diff --cached`）；无 staged changes 时退出
-2. 将 diff 嵌入内置提示词模板，请求 LLM 生成 3–6 条符合 Conventional Commits 的候选（JSON 字符串数组）；请求发出后提示 `Request has been sent, waiting for response`，响应成功返回后提示 `Response received`（均输出到 stderr）
-3. 命令行展示候选列表（支持文本过滤），**Enter 选中即自动提交，Ctrl-C 退出不提交**
+1. Reads the staged diff; exits if there is nothing staged
+2. Embeds the diff into a built-in prompt template and asks the LLM for 3–6 Conventional
+   Commits candidates (JSON string array); a spinner shows `Request has been sent, waiting for response...`
+3. Shows the candidates for selection — **Enter commits immediately, Ctrl-C aborts without committing**
 
-示例：
+Example:
 
 ```bash
 git-cz ai \
@@ -75,66 +124,74 @@ git-cz ai \
   --model-name=gpt-5-mini
 ```
 
-### 配置文件
+### Configuration file
 
-`git-cz ai` 的 API 参数可从配置文件加载（命令行参数优先于配置文件）。
-
-初始化默认配置（`~/.config/git-cz/config.toml`）：
+AI parameters can also be loaded from `~/.config/git-cz/config.toml`
+(command-line arguments take precedence over the config file).
 
 ```bash
 git-cz init-config
 ```
 
-首次运行会创建配置文件，内容如下：
+The first run creates the config file with the default content:
 
 ```toml
-api_endpoint="https://api.deepseek.com/v1/chat/completions"
-api_token="sk-your-token-string"
-model_name="deepseek-v4-flash"
+api_endpoint = "https://api.deepseek.com/v1/chat/completions"
+api_token = "sk-your-token-string"
+model_name = "deepseek-v4-flash"
 ```
 
-之后运行 `git-cz ai` 可省略命令行参数（仍可显式传入以覆盖配置值）：
+After that, `git-cz ai` works without arguments (explicit CLI flags still override the file):
 
 ```bash
 git-cz ai
-# 等价于：git-cz ai --api-endpoint=https://api.deepseek.com/v1/chat/completions \
-#                   --api-token=sk-your-token-string \
-#                   --model-name=deepseek-v4-flash
 ```
 
-## 提交信息格式
+## Commit message format
 
 ```
-<type>(<scope>): <description>
+<type>(<scope>)<!>: <description>
 
 <body>
 
 <footer>
 ```
 
-- `type`：11 种标准类型之一（见上）
-- `scope`：可选，如 `feat(parser)`
-- `footer`：`fix: #123` 或 `close: #456`
+- `type`: one of the 11 standard types (see Features)
+- `scope`: optional, e.g. `feat(parser)`
+- `footer`: `fix: #123` or `close: #456`
 
-## 技术栈
+## Documentation
 
-| 依赖                                              | 用途                                   |
-| ------------------------------------------------- | -------------------------------------- |
-| [clap](https://crates.io/crates/clap)             | CLI 参数解析                           |
-| [git2](https://crates.io/crates/git2)             | Git 仓库操作（暂存检查、索引、提交）   |
-| [inquire](https://crates.io/crates/inquire)       | 终端交互组件（选择器、输入框、确认框） |
-| [serde_json](https://crates.io/crates/serde_json) | LLM 请求/响应编解码                    |
-| [toml](https://crates.io/crates/toml)             | 解析 toml 配置文件内容                 |
-| [ureq](https://crates.io/crates/ureq)             | HTTP 客户端                            |
+- [CHANGELOG.md](CHANGELOG.md) — release history
+- [AGENTS.md](AGENTS.md) — codebase knowledge summary (for AI agents)
 
-## 测试
+## Testing
 
 ```bash
 cargo test
 ```
 
-共 32 个集成测试，覆盖消息构建、暂存检查、真实提交、AI 提示词/响应解析/staged diff、配置加载/初始化/参数合并等。
+39 unit tests covering message building, staged-change checks, real commits (including
+first commit in an empty repo), AI prompt/response parsing, staged diff, and config
+loading/init/merge.
 
-## 许可证
+## Tech stack
+
+| Dependency                                        | Purpose                                                  |
+| ------------------------------------------------- | -------------------------------------------------------- |
+| [clap](https://crates.io/crates/clap)             | CLI parsing                                              |
+| [git2](https://crates.io/crates/git2)             | Git repository operations (staged checks, index, commit) |
+| [inquire](https://crates.io/crates/inquire)       | Terminal interaction (select, text, confirm, editor)     |
+| [serde_json](https://crates.io/crates/serde_json) | LLM request/response encoding and decoding               |
+| [toml](https://crates.io/crates/toml)             | Config file parsing                                      |
+| [ureq](https://crates.io/crates/ureq)             | HTTP client (rustls TLS)                                 |
+
+## Contributing
+
+Contributions are welcome. Please follow the existing code style, keep error messages in
+English, and add unit tests alongside any new behavior.
+
+## License
 
 [MIT](LICENSE) · Copyright (c) 2026 secret
