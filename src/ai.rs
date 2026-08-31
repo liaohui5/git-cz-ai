@@ -120,7 +120,7 @@ pub fn select_commit_message(messages: Vec<String>) -> String {
 }
 
 pub fn parse_llm_api_response(body: &str) -> Result<Vec<String>, Box<dyn error::Error>> {
-    let parse_err = || -> Box<dyn error::Error> { "Failed to parse llm api response".into() };
+    let parse_err = || -> Box<dyn error::Error> { "AI 返回内容解析失败".into() };
 
     let value: serde_json::Value = serde_json::from_str(body).map_err(|_| parse_err())?;
 
@@ -269,7 +269,7 @@ mod ai_test {
     fn parse_llm_api_response_invalid_json() {
         let body = "this is not json";
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "Failed to parse llm api response");
+        assert_eq!(err.to_string(), "AI 返回内容解析失败");
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod ai_test {
         // envelope 存在但 content 不是数组
         let body = r#"{"choices":[{"message":{"content":"\"just a string\""}}]}"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "Failed to parse llm api response");
+        assert_eq!(err.to_string(), "AI 返回内容解析失败");
     }
 
     #[test]
@@ -285,7 +285,7 @@ mod ai_test {
         // 直接数组但元素非字符串
         let body = r#"[1, 2, 3]"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "Failed to parse llm api response");
+        assert_eq!(err.to_string(), "AI 返回内容解析失败");
     }
 
     #[test]
@@ -293,7 +293,7 @@ mod ai_test {
         // content 本身不是合法 JSON 数组
         let body = r#"{"choices":[{"message":{"content":"not-a-json"}}]}"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "Failed to parse llm api response");
+        assert_eq!(err.to_string(), "AI 返回内容解析失败");
     }
 
     #[test]
