@@ -2,7 +2,14 @@ use clap::Command;
 
 use git_cz_ai::{ai, config, manually};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("错误：{e}");
+        std::process::exit(1);
+    }
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let matches = Command::new("git-cz")
         .about("Simple commitizen CLI tool written in Rust")
         .subcommand(config::create_init_config_cmd())
