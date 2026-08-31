@@ -66,25 +66,40 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
 }
 
 pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn error::Error>> {
+    // 配置字段任一缺失时直接返回错误，不发起网络请求
+    let api_endpoint = config
+        .api_endpoint
+        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
+    let api_token = config
+        .api_token
+        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
+    let model_name = config
+        .model_name
+        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
+
     let mut loading_spinner = LoadingSpinner::default();
     loading_spinner.start("Request has been sent, waiting for response...");
 
-    let mut response = ureq::post(&config.api_endpoint.unwrap())
-        .header(
-            "Authorization",
-            &format!("Bearer {}", config.api_token.unwrap()),
-        )
+    // 请求失败时先停止 spinner 再返回中文错误
+    let mut response = match ureq::post(&api_endpoint)
+        .header("Authorization", &format!("Bearer {api_token}"))
         .header("Content-Type", "application/json")
         .send_json(serde_json::json!({
-            "model": &config.model_name.unwrap(),
+            "model": model_name,
             "messages": [{ "role": "user", "content": prompt }],
-        }))
-        .unwrap();
+        })) {
+        Ok(response) => response,
+        Err(e) => {
+            loading_spinner.stop();
+            return Err(format_request_error(e).into());
+        }
+    };
 
     loading_spinner.stop();
+
     let result = response.body_mut().read_to_string();
     if result.is_err() {
-        return result.map_err(|_| "Failed to read response body".into());
+        return result.map_err(|_| "读取 AI 响应失败".into());
     }
     Ok(result.unwrap())
 }
@@ -343,5 +358,31 @@ mod ai_test {
         // 未在映射表中的变体（InvalidProxyUrl）走 Display 兜底
         let msg = super::format_request_error(ureq::Error::InvalidProxyUrl);
         assert!(msg.starts_with("AI 请求失败："));
+    }
+
+    #[test]
+    fn send_request_missing_config_returns_error() {
+        // 全 None 配置：应在发起网络请求前直接返回错误
+        let err = super::send_request(crate::config::APIConfig::default(), "prompt".into())
+            .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "未配置 API 参数（api_endpoint / api_token / model_name）"
+        );
+    }
+
+    #[test]
+    fn send_request_partial_config_returns_error() {
+        // 仅缺 token 也应报错
+        let config = crate::config::APIConfig {
+            api_endpoint: Some("https://example.com/v1".into()),
+            api_token: None,
+            model_name: Some("model-x".into()),
+        };
+        let err = super::send_request(config, "prompt".into()).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "未配置 API 参数（api_endpoint / api_token / model_name）"
+        );
     }
 }
