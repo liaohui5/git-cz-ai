@@ -27,7 +27,7 @@ pub fn handler() -> Result<(), Box<dyn Error>> {
 // config path is ~/.config/git-cz/config.toml
 pub fn get_config_path() -> Result<PathBuf, Box<dyn Error>> {
     // ensure HOME env var exists
-    let home_path = env::var("HOME").map_err(|_| "无法确定主目录（HOME 环境变量未设置）")?;
+    let home_path = env::var("HOME").map_err(|_| "Cannot determine home directory (HOME environment variable not set)")?;
 
     // ~/.config
     let conf_path = PathBuf::from(home_path).join(".config");
@@ -71,12 +71,12 @@ pub fn load_config() -> Result<APIConfig, Box<dyn Error>> {
     let conf_path = get_config_path()?;
 
     if !conf_path.exists() {
-        return Err(format!("未找到配置文件 {}", conf_path.display()).into());
+        return Err(format!("Config file not found at {}", conf_path.display()).into());
     }
 
     let content = fs::read_to_string(&conf_path)?;
     let config: APIConfig = toml::from_str(&content)
-        .map_err(|e| format!("解析配置文件失败 {}:\n{}", conf_path.display(), e))?;
+        .map_err(|e| format!("Failed to parse config file {}:\n{}", conf_path.display(), e))?;
     Ok(config)
 }
 
@@ -101,7 +101,7 @@ mod config_test {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    /// 每个测试用例使用独立的临时目录，避免并行测试冲突
+    /// Each test uses its own temp dir to avoid parallel test conflicts
     fn unique_temp_dir() -> std::path::PathBuf {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let ts = SystemTime::now()
@@ -167,7 +167,7 @@ mod config_test {
 
     #[test]
     fn merge_config_overrides_with_none_in_config1() {
-        // config1 某些字段为 None，config2 提供值
+        // config1 has some None fields, config2 provides values
         let config1 = APIConfig::default();
         let config2 = APIConfig {
             api_endpoint: Some("https://set.com/v1".into()),
@@ -201,12 +201,12 @@ mod config_test {
         let dir = unique_temp_dir();
         let config_path = dir.join("config.toml");
 
-        // 先创建文件，写自定义内容
+        // create the file first with custom content
         let custom_content = "custom = \"content\"\n";
         fs::write(&config_path, custom_content).unwrap();
         assert!(config_path.exists());
 
-        // 再次 init 不应覆盖
+        // re-init should not overwrite the existing file
         init_config(&config_path).unwrap();
         let content = fs::read_to_string(&config_path).unwrap();
         assert_eq!(content, custom_content, "existing file should not be overwritten");
@@ -217,7 +217,7 @@ mod config_test {
 
     #[test]
     fn default_config_has_expected_fields() {
-        // 验证默认配置内容是有效的 TOML
+        // verify the default config content is valid TOML
         let config: APIConfig = toml::from_str(DEFAULT_CONFIG_CONTENT).unwrap();
         assert!(config.api_endpoint.is_some());
         assert!(config.api_token.is_some());
@@ -228,7 +228,7 @@ mod config_test {
         );
     }
 
-    /// HOME 环境变量守卫：设置 HOME，Drop 时恢复原值并清理临时目录
+    /// HOME environment guard: sets HOME, restores the original value and cleans up the temp dir on drop
     struct HomeGuard {
         old: Option<std::ffi::OsString>,
         dir: std::path::PathBuf,
@@ -253,19 +253,19 @@ mod config_test {
     }
 
     #[test]
-    fn load_config_errors_return_chinese_messages() {
+    fn load_config_errors_return_english_messages() {
         let dir = unique_temp_dir();
         let _guard = HomeGuard::new(&dir);
 
-        // 场景 1：配置文件不存在 → 未找到配置文件
+        // Scenario 1: config file does not exist -> config file not found
         let err = super::load_config().unwrap_err();
-        assert!(err.to_string().contains("未找到配置文件"));
+        assert!(err.to_string().contains("Config file not found at"));
 
-        // 场景 2：配置文件存在但 TOML 非法 → 解析配置文件失败
+        // Scenario 2: config file exists but TOML is invalid -> failed to parse config file
         let config_file = dir.join(".config/git-cz/config.toml");
         std::fs::create_dir_all(config_file.parent().unwrap()).unwrap();
         std::fs::write(&config_file, "not = = valid toml {{{").unwrap();
         let err = super::load_config().unwrap_err();
-        assert!(err.to_string().contains("解析配置文件失败"));
+        assert!(err.to_string().contains("Failed to parse config file"));
     }
 }
