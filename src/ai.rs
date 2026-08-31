@@ -9,6 +9,9 @@ use crate::{
     loading::LoadingSpinner,
 };
 
+/// API 配置缺失时的统一中文错误消息
+const MISSING_CONFIG_MSG: &str = "未配置 API 参数（api_endpoint / api_token / model_name）";
+
 /// 将 ureq 请求错误映射为简短的中文原因（ureq::Error 为 #[non_exhaustive]，须带兜底 arm）
 fn format_request_error(e: ureq::Error) -> String {
     match e {
@@ -74,15 +77,9 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
 
 pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn error::Error>> {
     // 配置字段任一缺失时直接返回错误，不发起网络请求
-    let api_endpoint = config
-        .api_endpoint
-        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
-    let api_token = config
-        .api_token
-        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
-    let model_name = config
-        .model_name
-        .ok_or("未配置 API 参数（api_endpoint / api_token / model_name）")?;
+    let api_endpoint = config.api_endpoint.ok_or(MISSING_CONFIG_MSG)?;
+    let api_token = config.api_token.ok_or(MISSING_CONFIG_MSG)?;
+    let model_name = config.model_name.ok_or(MISSING_CONFIG_MSG)?;
 
     let mut loading_spinner = LoadingSpinner::default();
     loading_spinner.start("Request has been sent, waiting for response...");
@@ -104,11 +101,10 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
 
     loading_spinner.stop();
 
-    let result = response.body_mut().read_to_string();
-    if result.is_err() {
-        return result.map_err(|_| "读取 AI 响应失败".into());
-    }
-    Ok(result.unwrap())
+    response
+        .body_mut()
+        .read_to_string()
+        .map_err(|_| "读取 AI 响应失败".into())
 }
 
 pub fn select_commit_message(messages: Vec<String>) -> Option<String> {

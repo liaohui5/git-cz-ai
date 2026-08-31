@@ -76,7 +76,7 @@ pub fn load_config() -> Result<APIConfig, Box<dyn Error>> {
 
     let content = fs::read_to_string(&conf_path)?;
     let config: APIConfig = toml::from_str(&content)
-        .map_err(|e| format!("Failed to parse config {}:\n{}", conf_path.display(), e))?;
+        .map_err(|e| format!("解析配置文件失败 {}:\n{}", conf_path.display(), e))?;
     Ok(config)
 }
 
@@ -228,12 +228,44 @@ mod config_test {
         );
     }
 
+    /// HOME 环境变量守卫：设置 HOME，Drop 时恢复原值并清理临时目录
+    struct HomeGuard {
+        old: Option<std::ffi::OsString>,
+        dir: std::path::PathBuf,
+    }
+
+    impl HomeGuard {
+        fn new(dir: &std::path::Path) -> Self {
+            let old = std::env::var_os("HOME");
+            std::env::set_var("HOME", dir);
+            Self { old, dir: dir.to_path_buf() }
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            match &self.old {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
     #[test]
-    fn load_config_missing_file_returns_chinese_error() {
+    fn load_config_errors_return_chinese_messages() {
         let dir = unique_temp_dir();
-        std::env::set_var("HOME", &dir);
+        let _guard = HomeGuard::new(&dir);
+
+        // 场景 1：配置文件不存在 → 未找到配置文件
         let err = super::load_config().unwrap_err();
         assert!(err.to_string().contains("未找到配置文件"));
-        let _ = std::fs::remove_dir_all(&dir);
+
+        // 场景 2：配置文件存在但 TOML 非法 → 解析配置文件失败
+        let config_file = dir.join(".config/git-cz/config.toml");
+        std::fs::create_dir_all(config_file.parent().unwrap()).unwrap();
+        std::fs::write(&config_file, "not = = valid toml {{{").unwrap();
+        let err = super::load_config().unwrap_err();
+        assert!(err.to_string().contains("解析配置文件失败"));
     }
 }
