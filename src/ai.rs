@@ -9,23 +9,28 @@ use crate::{
     loading::LoadingSpinner,
 };
 
-/// API 配置缺失时的统一中文错误消息
-const MISSING_CONFIG_MSG: &str = "未配置 API 参数（api_endpoint / api_token / model_name）";
+/// Unified error message for missing API configuration
+const MISSING_CONFIG_MSG: &str =
+    "Missing API configuration (api_endpoint / api_token / model_name)";
 
-/// 将 ureq 请求错误映射为简短的中文原因（ureq::Error 为 #[non_exhaustive]，须带兜底 arm）
+/// Map ureq request errors to brief english reasons (ureq::Error is #[non_exhaustive], needs a catch-all arm)
 fn format_request_error(e: ureq::Error) -> String {
     match e {
-        ureq::Error::StatusCode(code) => format!("AI 请求失败：HTTP {code}"),
-        ureq::Error::HostNotFound => "AI 请求失败：无法解析服务器域名".to_string(),
-        ureq::Error::Io(_) => "AI 请求失败：网络连接失败".to_string(),
-        ureq::Error::Timeout(_) => "AI 请求失败：请求超时".to_string(),
-        ureq::Error::Tls(_) => "AI 请求失败：TLS 连接失败".to_string(),
-        ureq::Error::BadUri(_) => "AI 请求失败：API 地址格式无效".to_string(),
-        ureq::Error::ConnectionFailed => "AI 请求失败：无法建立连接".to_string(),
-        ureq::Error::TooManyRedirects => "AI 请求失败：重定向次数过多".to_string(),
-        ureq::Error::RedirectFailed => "AI 请求失败：重定向失败".to_string(),
-        ureq::Error::BodyExceedsLimit(_) => "AI 请求失败：请求体过大".to_string(),
-        _ => format!("AI 请求失败：{e}"),
+        ureq::Error::StatusCode(code) => format!("AI request failed: HTTP {code}"),
+        ureq::Error::HostNotFound => {
+            "AI request failed: could not resolve server hostname".to_string()
+        }
+        ureq::Error::Io(_) => "AI request failed: network connection error".to_string(),
+        ureq::Error::Timeout(_) => "AI request failed: request timed out".to_string(),
+        ureq::Error::Tls(_) => "AI request failed: TLS connection error".to_string(),
+        ureq::Error::BadUri(_) => "AI request failed: invalid API endpoint URL".to_string(),
+        ureq::Error::ConnectionFailed => {
+            "AI request failed: could not establish connection".to_string()
+        }
+        ureq::Error::TooManyRedirects => "AI request failed: too many redirects".to_string(),
+        ureq::Error::RedirectFailed => "AI request failed: redirect failed".to_string(),
+        ureq::Error::BodyExceedsLimit(_) => "AI request failed: request body too large".to_string(),
+        _ => format!("AI request failed: {e}"),
     }
 }
 
@@ -67,8 +72,8 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
     let commit_message = match select_commit_message(result) {
         Some(message) => message,
         None => {
-            // Ctrl-C / Esc：主动取消，不是错误，不执行提交
-            println!("已取消，未提交");
+            // Ctrl-C / Esc: user cancelled, not an error, skip the commit
+            println!("Commit aborted.");
             return Ok(());
         }
     };
@@ -76,7 +81,7 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
 }
 
 pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn error::Error>> {
-    // 配置字段任一缺失时直接返回错误，不发起网络请求
+    // Return an error if any config field is missing, without making a network request
     let api_endpoint = config.api_endpoint.ok_or(MISSING_CONFIG_MSG)?;
     let api_token = config.api_token.ok_or(MISSING_CONFIG_MSG)?;
     let model_name = config.model_name.ok_or(MISSING_CONFIG_MSG)?;
@@ -84,7 +89,7 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
     let mut loading_spinner = LoadingSpinner::default();
     loading_spinner.start("Request has been sent, waiting for response...");
 
-    // 请求失败时先停止 spinner 再返回中文错误
+    // Stop the spinner before returning the error on request failure
     let mut response = match ureq::post(&api_endpoint)
         .header("Authorization", &format!("Bearer {api_token}"))
         .header("Content-Type", "application/json")
@@ -104,7 +109,7 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
     response
         .body_mut()
         .read_to_string()
-        .map_err(|_| "读取 AI 响应失败".into())
+        .map_err(|_| "Failed to read response body".into())
 }
 
 pub fn select_commit_message(messages: Vec<String>) -> Option<String> {
@@ -123,7 +128,7 @@ pub fn select_commit_message(messages: Vec<String>) -> Option<String> {
 }
 
 pub fn parse_llm_api_response(body: &str) -> Result<Vec<String>, Box<dyn error::Error>> {
-    let parse_err = || -> Box<dyn error::Error> { "AI 返回内容解析失败".into() };
+    let parse_err = || -> Box<dyn error::Error> { "Failed to parse llm api response".into() };
 
     let value: serde_json::Value = serde_json::from_str(body).map_err(|_| parse_err())?;
 
@@ -161,10 +166,10 @@ pub fn parse_args_to_config(args: &ArgMatches) -> APIConfig {
     config
 }
 
-/// AI 提示词模板：用户提供的 markdown, {{diff}} 占位符由调用时替换
+/// AI prompt template: user-provided markdown, {{diff}} placeholder replaced at call time
 const AI_PROMPT_TEMPLATE: &str = r##"## 角色与任务
-你是一个专业的 Git 提交信息生成器。  
-根据下方提供的 **git diff 输出**（即文件变化内容），生成一组符合 [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) 规范的提交信息。  
+你是一个专业的 Git 提交信息生成器。
+根据下方提供的 **git diff 输出**（即文件变化内容），生成一组符合 [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) 规范的提交信息。
 每个提交信息应**对应一个逻辑独立的变更单元**（例如：新增功能、修复错误、文档更新等），而不是简单地将整个 diff 拆分为机械的逐行记录。
 
 ## 输入：文件变化内容
@@ -207,7 +212,7 @@ const AI_PROMPT_TEMPLATE: &str = r##"## 角色与任务
 - 所有提交信息必须严格小写，且长度 < 100 字符。
 "##;
 
-/// 用 diff 内容替换提示词中的 {{diff}} 占位符。
+/// Replace the {{diff}} placeholder in the prompt with the diff content.
 pub fn build_ai_prompt(diff: &str) -> String {
     AI_PROMPT_TEMPLATE.replace("{{diff}}", diff)
 }
@@ -219,10 +224,10 @@ mod ai_test {
     #[test]
     fn build_ai_prompt_replaces_placeholder() {
         let prompt = build_ai_prompt("@@ -1 +1 @@\n-feature\n+feature2\n");
-        // placeholder 已被 diff 内容替换
+        // placeholder has been replaced with the diff content
         assert!(prompt.contains("@@ -1 +1 @@\n-feature\n+feature2\n"));
         assert!(!prompt.contains("{{diff}}"));
-        // 模板头尾仍保留
+        // template head and tail are preserved
         assert!(prompt.starts_with("## 角色与任务"));
         assert!(prompt.contains("根据下方提供的 **git diff 输出**"));
     }
@@ -236,7 +241,7 @@ mod ai_test {
 
     #[test]
     fn build_ai_prompt_multiple_occurrences() {
-        // 模板中占位符只出现一次，但即使多次也应全部替换
+        // placeholder occurs once in the template, but even multiple occurrences should all be replaced
         let prompt = build_ai_prompt("a\nb\nc\n");
         assert_eq!(prompt.matches("{{diff}}").count(), 0);
         assert!(prompt.contains("a\nb\nc\n"));
@@ -272,36 +277,36 @@ mod ai_test {
     fn parse_llm_api_response_invalid_json() {
         let body = "this is not json";
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "AI 返回内容解析失败");
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
     }
 
     #[test]
     fn parse_llm_api_response_content_not_array() {
-        // envelope 存在但 content 不是数组
+        // envelope exists but content is not an array
         let body = r#"{"choices":[{"message":{"content":"\"just a string\""}}]}"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "AI 返回内容解析失败");
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
     }
 
     #[test]
     fn parse_llm_api_response_array_of_non_strings() {
-        // 直接数组但元素非字符串
+        // direct array but elements are not strings
         let body = r#"[1, 2, 3]"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "AI 返回内容解析失败");
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
     }
 
     #[test]
     fn parse_llm_api_response_envelope_content_invalid_json() {
-        // content 本身不是合法 JSON 数组
+        // content itself is not a valid JSON array
         let body = r#"{"choices":[{"message":{"content":"not-a-json"}}]}"#;
         let err = parse_llm_api_response(body).unwrap_err();
-        assert_eq!(err.to_string(), "AI 返回内容解析失败");
+        assert_eq!(err.to_string(), "Failed to parse llm api response");
     }
 
     #[test]
     fn parse_llm_api_response_empty_array() {
-        // 空数组也应当解析成功
+        // an empty array should also parse successfully
         let body = r#"[]"#;
         let result = parse_llm_api_response(body).unwrap();
         assert!(result.is_empty());
@@ -311,7 +316,7 @@ mod ai_test {
     fn format_request_error_status_code() {
         assert_eq!(
             super::format_request_error(ureq::Error::StatusCode(401)),
-            "AI 请求失败：HTTP 401"
+            "AI request failed: HTTP 401"
         );
     }
 
@@ -319,7 +324,7 @@ mod ai_test {
     fn format_request_error_host_not_found() {
         assert_eq!(
             super::format_request_error(ureq::Error::HostNotFound),
-            "AI 请求失败：无法解析服务器域名"
+            "AI request failed: could not resolve server hostname"
         );
     }
 
@@ -328,7 +333,7 @@ mod ai_test {
         let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
         assert_eq!(
             super::format_request_error(ureq::Error::Io(io_err)),
-            "AI 请求失败：网络连接失败"
+            "AI request failed: network connection error"
         );
     }
 
@@ -336,7 +341,7 @@ mod ai_test {
     fn format_request_error_tls() {
         assert_eq!(
             super::format_request_error(ureq::Error::Tls("tls error")),
-            "AI 请求失败：TLS 连接失败"
+            "AI request failed: TLS connection error"
         );
     }
 
@@ -344,7 +349,7 @@ mod ai_test {
     fn format_request_error_bad_uri() {
         assert_eq!(
             super::format_request_error(ureq::Error::BadUri("bad".into())),
-            "AI 请求失败：API 地址格式无效"
+            "AI request failed: invalid API endpoint URL"
         );
     }
 
@@ -352,31 +357,31 @@ mod ai_test {
     fn format_request_error_connection_failed() {
         assert_eq!(
             super::format_request_error(ureq::Error::ConnectionFailed),
-            "AI 请求失败：无法建立连接"
+            "AI request failed: could not establish connection"
         );
     }
 
     #[test]
     fn format_request_error_fallback() {
-        // 未在映射表中的变体（InvalidProxyUrl）走 Display 兜底
+        // unmapped variant (InvalidProxyUrl) falls back to Display
         let msg = super::format_request_error(ureq::Error::InvalidProxyUrl);
-        assert!(msg.starts_with("AI 请求失败："));
+        assert!(msg.starts_with("AI request failed: "));
     }
 
     #[test]
     fn send_request_missing_config_returns_error() {
-        // 全 None 配置：应在发起网络请求前直接返回错误
-        let err = super::send_request(crate::config::APIConfig::default(), "prompt".into())
-            .unwrap_err();
+        // all-None config: must return an error before making a network request
+        let err =
+            super::send_request(crate::config::APIConfig::default(), "prompt".into()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "未配置 API 参数（api_endpoint / api_token / model_name）"
+            "Missing API configuration (api_endpoint / api_token / model_name)"
         );
     }
 
     #[test]
     fn send_request_partial_config_returns_error() {
-        // 仅缺 token 也应报错
+        // a missing token alone should also error
         let config = crate::config::APIConfig {
             api_endpoint: Some("https://example.com/v1".into()),
             api_token: None,
@@ -385,7 +390,7 @@ mod ai_test {
         let err = super::send_request(config, "prompt".into()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "未配置 API 参数（api_endpoint / api_token / model_name）"
+            "Missing API configuration (api_endpoint / api_token / model_name)"
         );
     }
 }

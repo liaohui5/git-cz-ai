@@ -1,7 +1,7 @@
 use std::error;
 
 use crate::git;
-use inquire::{Confirm, Editor, InquireError, Select, Text, validator::Validation};
+use inquire::{validator::Validation, Confirm, Editor, InquireError, Select, Text};
 
 pub fn build_commit_message(
     commit_type: String,
@@ -94,8 +94,8 @@ pub fn confirm_is_breaking_change() -> String {
 }
 
 pub fn input_commit_scope() -> String {
-    // Denote the scope of this change(optional)
-    let commit_scope = Text::new("Denote the scope of this change(optional)?")
+    // Input the scope of this change(optional)
+    let commit_scope = Text::new("Input the scope of this change(optional)?")
         .prompt()
         .unwrap_or_default();
     if !commit_scope.is_empty() {
@@ -191,14 +191,8 @@ mod manual_test {
         let message = "message".to_string();
         let body = "body".to_string();
         let footer = "footer".to_string();
-        let full_commit_message = build_commit_message(
-            commit_type,
-            scope,
-            break_change_mark,
-            message,
-            body,
-            footer,
-        );
+        let full_commit_message =
+            build_commit_message(commit_type, scope, break_change_mark, message, body, footer);
         assert_eq!(full_commit_message, "feat(api)!: message\n\nbody\n\nfooter");
     }
 
@@ -277,7 +271,10 @@ mod manual_test {
             "detailed explanation".into(),
             "close: #456".into(),
         );
-        assert_eq!(full, "docs(readme): update docs\n\ndetailed explanation\n\nclose: #456");
+        assert_eq!(
+            full,
+            "docs(readme): update docs\n\ndetailed explanation\n\nclose: #456"
+        );
     }
 
     #[test]
