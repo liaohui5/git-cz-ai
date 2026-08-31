@@ -4,7 +4,7 @@ use git_cz_ai::{ai, config, manually};
 
 fn main() {
     if let Err(e) = run() {
-        eprintln!("错误：{e}");
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }
