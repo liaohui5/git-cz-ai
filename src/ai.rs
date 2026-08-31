@@ -9,6 +9,23 @@ use crate::{
     loading::LoadingSpinner,
 };
 
+/// 将 ureq 请求错误映射为简短的中文原因（ureq::Error 为 #[non_exhaustive]，须带兜底 arm）
+fn format_request_error(e: ureq::Error) -> String {
+    match e {
+        ureq::Error::StatusCode(code) => format!("AI 请求失败：HTTP {code}"),
+        ureq::Error::HostNotFound => "AI 请求失败：无法解析服务器域名".to_string(),
+        ureq::Error::Io(_) => "AI 请求失败：网络连接失败".to_string(),
+        ureq::Error::Timeout(_) => "AI 请求失败：请求超时".to_string(),
+        ureq::Error::Tls(_) => "AI 请求失败：TLS 连接失败".to_string(),
+        ureq::Error::BadUri(_) => "AI 请求失败：API 地址格式无效".to_string(),
+        ureq::Error::ConnectionFailed => "AI 请求失败：无法建立连接".to_string(),
+        ureq::Error::TooManyRedirects => "AI 请求失败：重定向次数过多".to_string(),
+        ureq::Error::RedirectFailed => "AI 请求失败：重定向失败".to_string(),
+        ureq::Error::BodyExceedsLimit(_) => "AI 请求失败：请求体过大".to_string(),
+        _ => format!("AI 请求失败：{e}"),
+    }
+}
+
 pub fn create_ai_cmd() -> Command {
     let api_endpoint_arg = Arg::new("api-endpoint")
         .long("api-endpoint")
@@ -270,5 +287,61 @@ mod ai_test {
         let body = r#"[]"#;
         let result = parse_llm_api_response(body).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn format_request_error_status_code() {
+        assert_eq!(
+            super::format_request_error(ureq::Error::StatusCode(401)),
+            "AI 请求失败：HTTP 401"
+        );
+    }
+
+    #[test]
+    fn format_request_error_host_not_found() {
+        assert_eq!(
+            super::format_request_error(ureq::Error::HostNotFound),
+            "AI 请求失败：无法解析服务器域名"
+        );
+    }
+
+    #[test]
+    fn format_request_error_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        assert_eq!(
+            super::format_request_error(ureq::Error::Io(io_err)),
+            "AI 请求失败：网络连接失败"
+        );
+    }
+
+    #[test]
+    fn format_request_error_tls() {
+        assert_eq!(
+            super::format_request_error(ureq::Error::Tls("tls error")),
+            "AI 请求失败：TLS 连接失败"
+        );
+    }
+
+    #[test]
+    fn format_request_error_bad_uri() {
+        assert_eq!(
+            super::format_request_error(ureq::Error::BadUri("bad".into())),
+            "AI 请求失败：API 地址格式无效"
+        );
+    }
+
+    #[test]
+    fn format_request_error_connection_failed() {
+        assert_eq!(
+            super::format_request_error(ureq::Error::ConnectionFailed),
+            "AI 请求失败：无法建立连接"
+        );
+    }
+
+    #[test]
+    fn format_request_error_fallback() {
+        // 未在映射表中的变体（InvalidProxyUrl）走 Display 兜底
+        let msg = super::format_request_error(ureq::Error::InvalidProxyUrl);
+        assert!(msg.starts_with("AI 请求失败："));
     }
 }
