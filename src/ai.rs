@@ -9,10 +9,6 @@ use crate::{
     loading::LoadingSpinner,
 };
 
-/// Unified error message for missing API configuration
-const MISSING_CONFIG_MSG: &str =
-    "Missing API configuration (api_endpoint / api_token / model_name)";
-
 /// Map ureq request errors to brief english reasons (ureq::Error is #[non_exhaustive], needs a catch-all arm)
 fn format_request_error(e: ureq::Error) -> String {
     match e {
@@ -69,44 +65,50 @@ pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
     let prompt = build_ai_prompt(&diff);
     let body = send_request(merged_config, prompt)?;
     let result = parse_llm_api_response(&body)?;
-    let commit_message = match select_commit_message(result) {
-        Some(message) => message,
+    match select_commit_message(result) {
+        Some(message) => git::perform_commit(&message),
         None => {
             // Ctrl-C / Esc: user cancelled, not an error, skip the commit
             println!("Commit aborted.");
-            return Ok(());
+            Ok(())
         }
-    };
-    git::perform_commit(&commit_message)
+    }
 }
 
 pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn error::Error>> {
     // Return an error if any config field is missing, without making a network request
-    let api_endpoint = config.api_endpoint.ok_or(MISSING_CONFIG_MSG)?;
-    let api_token = config.api_token.ok_or(MISSING_CONFIG_MSG)?;
-    let model_name = config.model_name.ok_or(MISSING_CONFIG_MSG)?;
+    let api_endpoint = config
+        .api_endpoint
+        .ok_or("Missing API config field (api_endpoint)")?;
+
+    let api_token = config
+        .api_token
+        .ok_or("Missing API config field (api_token)")?;
+
+    let model_name = config
+        .model_name
+        .ok_or("Missing API config field (model_name)")?;
 
     let mut loading_spinner = LoadingSpinner::default();
-    loading_spinner.start("Request has been sent, waiting for response...");
+    loading_spinner.start("Request has been sent, please wait...");
 
-    // Stop the spinner before returning the error on request failure
-    let mut response = match ureq::post(&api_endpoint)
+    // Send the request
+    let result = ureq::post(&api_endpoint)
         .header("Authorization", &format!("Bearer {api_token}"))
         .header("Content-Type", "application/json")
         .send_json(serde_json::json!({
             "model": model_name,
             "messages": [{ "role": "user", "content": prompt }],
-        })) {
-        Ok(response) => response,
-        Err(e) => {
-            loading_spinner.stop();
-            return Err(format_request_error(e).into());
-        }
-    };
+        }));
 
+    // Stop the spinner before returning the error on request failure
     loading_spinner.stop();
+    if let Err(e) = result {
+        return Err(format_request_error(e).into());
+    }
 
-    response
+    result
+        .unwrap()
         .body_mut()
         .read_to_string()
         .map_err(|_| "Failed to read response body".into())

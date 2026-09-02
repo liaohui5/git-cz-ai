@@ -1,9 +1,8 @@
 use clap::Command;
 use serde::Deserialize;
-use std::env;
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 /// Config
 #[derive(Debug, Default, Deserialize)]
@@ -27,7 +26,8 @@ pub fn handler() -> Result<(), Box<dyn Error>> {
 // config path is ~/.config/git-cz/config.toml
 pub fn get_config_path() -> Result<PathBuf, Box<dyn Error>> {
     // ensure HOME env var exists
-    let home_path = env::var("HOME").map_err(|_| "Cannot determine home directory (HOME environment variable not set)")?;
+    let home_path = env::var("HOME")
+        .map_err(|_| "Cannot determine home directory (HOME environment variable not set)")?;
 
     // ~/.config
     let conf_path = PathBuf::from(home_path).join(".config");
@@ -71,12 +71,12 @@ pub fn load_config() -> Result<APIConfig, Box<dyn Error>> {
     let conf_path = get_config_path()?;
 
     if !conf_path.exists() {
-        return Err(format!("Config file not found at {}", conf_path.display()).into());
+        return Err(format!("Config file not found at {:?}", conf_path).into());
     }
 
     let content = fs::read_to_string(&conf_path)?;
     let config: APIConfig = toml::from_str(&content)
-        .map_err(|e| format!("Failed to parse config file {}:\n{}", conf_path.display(), e))?;
+        .map_err(|e| format!("Failed to parse config file {:?}:\n{}", conf_path, e))?;
     Ok(config)
 }
 
@@ -209,7 +209,10 @@ mod config_test {
         // re-init should not overwrite the existing file
         init_config(&config_path).unwrap();
         let content = fs::read_to_string(&config_path).unwrap();
-        assert_eq!(content, custom_content, "existing file should not be overwritten");
+        assert_eq!(
+            content, custom_content,
+            "existing file should not be overwritten"
+        );
 
         // cleanup
         let _ = fs::remove_dir_all(&dir);
@@ -238,7 +241,10 @@ mod config_test {
         fn new(dir: &std::path::Path) -> Self {
             let old = std::env::var_os("HOME");
             std::env::set_var("HOME", dir);
-            Self { old, dir: dir.to_path_buf() }
+            Self {
+                old,
+                dir: dir.to_path_buf(),
+            }
         }
     }
 
