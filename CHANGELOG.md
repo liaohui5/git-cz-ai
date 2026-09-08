@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.8](https://github.com/liaohui5/git-cz-ai/compare/v0.0.7...v0.0.8) - 2026-09-08
+
+### Other
+
+- *(manually)* rename functions for clarity
+- *(ai)* simplify request error messages and select prompt
+- *(codegraph)* add gitignore for local data files
+- *(git)* add staged changes constant and simplify error messages
+- *(ai)* restructure prompt template for improved clarity and compliance
+- *(ai)* rework response handling to use result pattern
+- *(cargo)* pin ureq dependency to 3.4.0
+
 ## [0.0.7](https://github.com/liaohui5/git-cz-ai/compare/v0.0.6...v0.0.7) - 2026-08-31
 
 ### Fixed
