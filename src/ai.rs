@@ -9,42 +9,35 @@ use crate::{
     loading::LoadingSpinner,
 };
 
+/// Create ai sub command
 pub fn create_ai_cmd() -> Command {
-    let api_endpoint_arg = Arg::new("api-endpoint")
-        .long("api-endpoint")
-        .help("Set the api url")
-        .required(false)
-        .num_args(1);
-
-    let api_token_arg = Arg::new("api-token")
-        .long("api-token")
-        .help("Set the api access token")
-        .required(false)
-        .num_args(1);
-
-    let model_name_arg = Arg::new("model-name")
-        .long("model-name")
-        .help("Set the model")
-        .required(false)
-        .num_args(1);
-
     Command::new("ai")
         .about("Auto generate commit messages by llm api")
-        .arg(api_endpoint_arg)
-        .arg(api_token_arg)
-        .arg(model_name_arg)
+        .arg(optional_arg("api-endpoint", "Set the api url"))
+        .arg(optional_arg("api-token", "Set the api access token"))
+        .arg(optional_arg("model-name", "Set the model"))
 }
 
+/// An optional `--<name>` flag that takes a single value.
+fn optional_arg(name: &'static str, help: &'static str) -> Arg {
+    Arg::new(name)
+        .long(name)
+        .help(help)
+        .required(false)
+        .num_args(1)
+}
+
+/// ai sub command handler
 pub fn handler(args: &ArgMatches) -> Result<(), Box<dyn error::Error>> {
     let file_config: APIConfig = config::load_config()?;
     let args_config = parse_args_to_config(args);
-    let merged_config = config::merge_config(file_config, args_config); // args_config first
+    let merged_config = config::merge_config(file_config, args_config); // CLI args override the file config
 
     let diff = git::get_staged_diff()?;
     let prompt = build_ai_prompt(&diff);
-    let body = send_request(merged_config, prompt)?;
-    let result = parse_llm_api_response(&body)?;
-    match select_commit_message(result) {
+    let response_body = send_request(merged_config, prompt)?;
+    let candidates = parse_llm_api_response(&response_body)?;
+    match select_commit_message(candidates) {
         Some(message) => git::perform_commit(&message),
         None => {
             // Ctrl-C / Esc: user cancelled, not an error, skip the commit
@@ -95,32 +88,29 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
 
 /// Map ureq request errors to brief english reasons (ureq::Error is #[non_exhaustive], needs a catch-all arm)
 fn format_request_error(e: ureq::Error) -> String {
-    match e {
-        ureq::Error::StatusCode(code) => format!("AI request failed: HTTP {code}"),
-        ureq::Error::HostNotFound => {
-            "AI request failed: could not resolve server hostname".to_string()
-        }
-        ureq::Error::Io(_) => "AI request failed: network connection error".to_string(),
-        ureq::Error::Timeout(_) => "AI request failed: request timed out".to_string(),
-        ureq::Error::Tls(_) => "AI request failed: TLS connection error".to_string(),
-        ureq::Error::BadUri(_) => "AI request failed: invalid API endpoint URL".to_string(),
-        ureq::Error::ConnectionFailed => {
-            "AI request failed: could not establish connection".to_string()
-        }
-        ureq::Error::TooManyRedirects => "AI request failed: too many redirects".to_string(),
-        ureq::Error::RedirectFailed => "AI request failed: redirect failed".to_string(),
-        ureq::Error::BodyExceedsLimit(_) => "AI request failed: request body too large".to_string(),
-        _ => format!("AI request failed: {e}"),
-    }
+    let reason = match e {
+        ureq::Error::StatusCode(code) => format!("HTTP {code}"),
+        ureq::Error::HostNotFound => "could not resolve server hostname".to_string(),
+        ureq::Error::Io(_) => "network connection error".to_string(),
+        ureq::Error::Timeout(_) => "request timed out".to_string(),
+        ureq::Error::Tls(_) => "TLS connection error".to_string(),
+        ureq::Error::BadUri(_) => "invalid API endpoint URL".to_string(),
+        ureq::Error::ConnectionFailed => "could not establish connection".to_string(),
+        ureq::Error::TooManyRedirects => "too many redirects".to_string(),
+        ureq::Error::RedirectFailed => "redirect failed".to_string(),
+        ureq::Error::BodyExceedsLimit(_) => "request body too large".to_string(),
+        _ => e.to_string(),
+    };
+    format!("AI request failed: {reason}")
 }
 
 pub fn select_commit_message(messages: Vec<String>) -> Option<String> {
-    let messages: Vec<&str> = messages.iter().map(|m| m.as_str()).collect();
-    let len = messages.len();
+    let options: Vec<&str> = messages.iter().map(|m| m.as_str()).collect();
+    let page_size = options.len();
 
     let commit_message: Result<&str, InquireError> =
-        Select::new("Select commit message by AI generated", messages)
-            .with_page_size(len)
+        Select::new("Select commit message by AI generated", options)
+            .with_page_size(page_size)
             .prompt();
 
     match commit_message {
@@ -149,23 +139,11 @@ pub fn parse_llm_api_response(body: &str) -> Result<Vec<String>, Box<dyn error::
 }
 
 pub fn parse_args_to_config(args: &ArgMatches) -> APIConfig {
-    let mut config = APIConfig::default();
-
-    let api_endpoint = args.get_one::<String>("api-endpoint");
-    let api_token = args.get_one::<String>("api-token");
-    let model_name = args.get_one::<String>("model-name");
-
-    if let Some(url) = api_endpoint {
-        config.api_endpoint = Some(url.to_owned());
+    APIConfig {
+        api_endpoint: args.get_one::<String>("api-endpoint").map(|s| s.to_owned()),
+        api_token: args.get_one::<String>("api-token").map(|s| s.to_owned()),
+        model_name: args.get_one::<String>("model-name").map(|s| s.to_owned()),
     }
-    if let Some(token) = api_token {
-        config.api_token = Some(token.to_owned());
-    }
-    if let Some(model_name) = model_name {
-        config.model_name = Some(model_name.to_owned());
-    }
-
-    config
 }
 
 /// AI prompt template: user-provided markdown, {{diff}} placeholder replaced at call time
@@ -320,52 +298,36 @@ mod ai_test {
     }
 
     #[test]
-    fn format_request_error_status_code() {
-        assert_eq!(
-            super::format_request_error(ureq::Error::StatusCode(401)),
-            "AI request failed: HTTP 401"
-        );
-    }
-
-    #[test]
-    fn format_request_error_host_not_found() {
-        assert_eq!(
-            super::format_request_error(ureq::Error::HostNotFound),
-            "AI request failed: could not resolve server hostname"
-        );
-    }
-
-    #[test]
-    fn format_request_error_io() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
-        assert_eq!(
-            super::format_request_error(ureq::Error::Io(io_err)),
-            "AI request failed: network connection error"
-        );
-    }
-
-    #[test]
-    fn format_request_error_tls() {
-        assert_eq!(
-            super::format_request_error(ureq::Error::Tls("tls error")),
-            "AI request failed: TLS connection error"
-        );
-    }
-
-    #[test]
-    fn format_request_error_bad_uri() {
-        assert_eq!(
-            super::format_request_error(ureq::Error::BadUri("bad".into())),
-            "AI request failed: invalid API endpoint URL"
-        );
-    }
-
-    #[test]
-    fn format_request_error_connection_failed() {
-        assert_eq!(
-            super::format_request_error(ureq::Error::ConnectionFailed),
-            "AI request failed: could not establish connection"
-        );
+    fn format_request_error_maps_variants() {
+        let cases: Vec<(ureq::Error, &str)> = vec![
+            (ureq::Error::StatusCode(401), "AI request failed: HTTP 401"),
+            (
+                ureq::Error::HostNotFound,
+                "AI request failed: could not resolve server hostname",
+            ),
+            (
+                ureq::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionRefused,
+                    "refused",
+                )),
+                "AI request failed: network connection error",
+            ),
+            (
+                ureq::Error::Tls("tls error"),
+                "AI request failed: TLS connection error",
+            ),
+            (
+                ureq::Error::BadUri("bad".into()),
+                "AI request failed: invalid API endpoint URL",
+            ),
+            (
+                ureq::Error::ConnectionFailed,
+                "AI request failed: could not establish connection",
+            ),
+        ];
+        for (err, expected) in cases {
+            assert_eq!(super::format_request_error(err), expected);
+        }
     }
 
     #[test]

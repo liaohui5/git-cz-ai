@@ -1,4 +1,4 @@
-use git2::{Commit, DiffFormat, ErrorCode, Repository, Signature};
+use git2::{Commit, Diff, DiffFormat, ErrorCode, Repository, Signature, Tree};
 use std::error::Error;
 use std::path::Path;
 use std::str::from_utf8;
@@ -12,7 +12,6 @@ pub fn get_staged_diff() -> Result<String, Box<dyn Error>> {
 
 fn get_staged_diff_in(repo_path: &Path) -> Result<String, Box<dyn Error>> {
     let repo = Repository::open(repo_path)?;
-    let index = repo.index()?;
     // A freshly `git init` repo has no commits yet: diff the index against an
     // empty tree. A HEAD that exists but cannot be peeled to a tree also
     // degrades to that empty baseline (long-standing behavior; do not route
@@ -23,10 +22,7 @@ fn get_staged_diff_in(repo_path: &Path) -> Result<String, Box<dyn Error>> {
         Err(e) => return Err(e.into()),
     };
 
-    let diff = repo.diff_tree_to_index(head_tree.as_ref(), Some(&index), None)?;
-    if diff.deltas().len() == 0 {
-        return Err(NO_STAGED_CHANGES.into());
-    }
+    let diff = staged_diff(&repo, head_tree.as_ref())?;
 
     let mut output = String::new();
     diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
@@ -53,20 +49,26 @@ fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, Box<dyn Error>> 
     }
 }
 
+/// Build the staged diff (index vs `base_tree`) and reject it when nothing is
+/// staged. `base_tree` is `None` for a repo with no commits yet (empty tree).
+fn staged_diff<'a>(repo: &'a Repository, base_tree: Option<&'a Tree>) -> Result<Diff<'a>, Box<dyn Error>> {
+    let index = repo.index()?;
+    let diff = repo.diff_tree_to_index(base_tree, Some(&index), None)?;
+    if diff.deltas().len() == 0 {
+        return Err(NO_STAGED_CHANGES.into());
+    }
+    Ok(diff)
+}
+
 pub fn has_staged_changes() -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(".")?;
-    let index = repo.index()?;
 
     // None when the repo has no commits yet: diff the index against an empty tree
     let base_tree = head_commit(&repo)?
         .map(|commit| commit.tree())
         .transpose()?;
 
-    let diff = repo.diff_tree_to_index(base_tree.as_ref(), Some(&index), None)?;
-    if diff.deltas().len() == 0 {
-        return Err(NO_STAGED_CHANGES.into());
-    }
-
+    staged_diff(&repo, base_tree.as_ref())?;
     Ok(())
 }
 
@@ -80,7 +82,7 @@ pub fn perform_commit(full_commit_message: &str) -> Result<(), Box<dyn Error>> {
     let config = repo.config()?;
     let author_name = config.get_string("user.name")?;
     let author_email = config.get_string("user.email")?;
-    let sig = Signature::now(&author_name, &author_email)?;
+    let signature = Signature::now(&author_name, &author_email)?;
 
     // A first commit (unborn HEAD) has no parents
     let parents = head_commit(&repo)?;
@@ -88,8 +90,8 @@ pub fn perform_commit(full_commit_message: &str) -> Result<(), Box<dyn Error>> {
 
     repo.commit(
         Some("HEAD"),
-        &sig,
-        &sig,
+        &signature,
+        &signature,
         full_commit_message,
         &tree,
         &parent_refs,
@@ -150,10 +152,16 @@ mod git_test {
         index.write().unwrap();
     }
 
-    /// A freshly `git init` repo with no commits (unborn branch)
-    fn empty_repo(name: &str) -> TempDir {
+    /// Create a unique temp dir and initialize an empty git repo inside it.
+    fn fresh_repo(name: &str) -> (TempDir, Repository) {
         let dir = TempDir::new(name);
         let repo = Repository::init(dir.path()).unwrap();
+        (dir, repo)
+    }
+
+    /// A freshly `git init` repo with no commits (unborn branch)
+    fn empty_repo(name: &str) -> TempDir {
+        let (dir, repo) = fresh_repo(name);
         // precondition: HEAD is unborn, i.e. repo.head() errors with UnbornBranch
         match repo.head() {
             Err(e) => assert_eq!(e.code(), ErrorCode::UnbornBranch),
@@ -164,14 +172,13 @@ mod git_test {
 
     /// Repo with an initial commit on HEAD
     fn repo_with_initial_commit(name: &str) -> TempDir {
-        let dir = TempDir::new(name);
-        let repo = Repository::init(dir.path()).unwrap();
+        let (dir, repo) = fresh_repo(name);
         stage_file(&repo, "base.txt", "base\n");
         let mut index = repo.index().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        let sig = Signature::now("test", "test@example.com").unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+        let signature = Signature::now("test", "test@example.com").unwrap();
+        repo.commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
             .unwrap();
         dir
     }
@@ -201,7 +208,7 @@ mod git_test {
         let err = get_staged_diff_in(dir.path()).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "No staged changes. Please 'git add' your files first."
+            "No staged changes, please 'git add' your files first"
         );
     }
 

@@ -30,19 +30,24 @@ pub fn get_config_path() -> Result<PathBuf, Box<dyn Error>> {
         .map_err(|_| "Cannot determine home directory (HOME environment variable not set)")?;
 
     // ~/.config
-    let conf_path = PathBuf::from(home_path).join(".config");
-    if !conf_path.exists() {
-        fs::create_dir_all(&conf_path)?;
-    }
+    let config_dir = PathBuf::from(home_path).join(".config");
+    ensure_dir(&config_dir)?;
 
     // ~/.config/git-cz
-    let gitcz_path = conf_path.join("git-cz");
-    if !gitcz_path.exists() {
-        fs::create_dir_all(&gitcz_path)?;
-    }
+    let gitcz_dir = config_dir.join("git-cz");
+    ensure_dir(&gitcz_dir)?;
 
     // ~/.config/git-cz/config.toml
-    Ok(gitcz_path.join("config.toml"))
+    Ok(gitcz_dir.join("config.toml"))
+}
+
+/// Create `path` (and its parents) when it does not already exist; a pre-existing
+/// path is left untouched.
+fn ensure_dir(path: &Path) -> Result<(), Box<dyn Error>> {
+    if !path.exists() {
+        fs::create_dir_all(path)?;
+    }
+    Ok(())
 }
 
 /// default config
@@ -53,45 +58,44 @@ model_name = "deepseek-v4-flash"
 "#;
 
 // init config to ~/.config/git-cz/config.toml
-pub fn init_config(path: &Path) -> Result<(), Box<dyn Error>> {
-    if path.exists() {
-        println!("Config file already exists({})", path.display());
+pub fn init_config(config_path: &Path) -> Result<(), Box<dyn Error>> {
+    if config_path.exists() {
+        println!("Config file already exists({})", config_path.display());
         return Ok(());
     }
 
-    fs::write(path, DEFAULT_CONFIG_CONTENT)?;
-
-    println!("Config file created({})", path.display());
-
+    fs::write(config_path, DEFAULT_CONFIG_CONTENT)?;
+    println!("Config file created({})", config_path.display());
     Ok(())
 }
 
 // load config from ~/.config/git-cz/config.toml
 pub fn load_config() -> Result<APIConfig, Box<dyn Error>> {
-    let conf_path = get_config_path()?;
+    let config_path = get_config_path()?;
 
-    if !conf_path.exists() {
-        return Err(format!("Config file not found at {:?}", conf_path).into());
+    if !config_path.exists() {
+        return Err(format!("Config file not found at {:?}", config_path).into());
     }
 
-    let content = fs::read_to_string(&conf_path)?;
+    let content = fs::read_to_string(&config_path)?;
     let config: APIConfig = toml::from_str(&content)
-        .map_err(|e| format!("Failed to parse config file {:?}:\n{}", conf_path, e))?;
+        .map_err(|e| format!("Failed to parse config file {:?}:\n{}", config_path, e))?;
     Ok(config)
 }
 
-// merge config2 to config1
-pub fn merge_config(mut config1: APIConfig, config2: APIConfig) -> APIConfig {
-    if config2.api_endpoint.is_some() {
-        config1.api_endpoint = config2.api_endpoint;
+/// Overwrite `base` with `override_with` only when the override is `Some`.
+fn override_if_some<T>(base: &mut Option<T>, override_with: Option<T>) {
+    if override_with.is_some() {
+        *base = override_with;
     }
-    if config2.api_token.is_some() {
-        config1.api_token = config2.api_token;
-    }
-    if config2.model_name.is_some() {
-        config1.model_name = config2.model_name;
-    }
-    config1
+}
+
+// override base fields with the fields that are set in override_with
+pub fn merge_config(mut base: APIConfig, override_with: APIConfig) -> APIConfig {
+    override_if_some(&mut base.api_endpoint, override_with.api_endpoint);
+    override_if_some(&mut base.api_token, override_with.api_token);
+    override_if_some(&mut base.model_name, override_with.model_name);
+    base
 }
 
 #[cfg(test)]
@@ -117,67 +121,67 @@ mod config_test {
 
     #[test]
     fn merge_config_overrides_all() {
-        let config1 = APIConfig {
+        let base = APIConfig {
             api_endpoint: Some("https://old.com/v1".into()),
             api_token: Some("old-token".into()),
             model_name: Some("old-model".into()),
         };
-        let config2 = APIConfig {
+        let override_with = APIConfig {
             api_endpoint: Some("https://new.com/v1".into()),
             api_token: Some("new-token".into()),
             model_name: Some("new-model".into()),
         };
-        let result = merge_config(config1, config2);
-        assert_eq!(result.api_endpoint.unwrap(), "https://new.com/v1");
-        assert_eq!(result.api_token.unwrap(), "new-token");
-        assert_eq!(result.model_name.unwrap(), "new-model");
+        let merged = merge_config(base, override_with);
+        assert_eq!(merged.api_endpoint.unwrap(), "https://new.com/v1");
+        assert_eq!(merged.api_token.unwrap(), "new-token");
+        assert_eq!(merged.model_name.unwrap(), "new-model");
     }
 
     #[test]
     fn merge_config_partial_overrides() {
-        let config1 = APIConfig {
+        let base = APIConfig {
             api_endpoint: Some("https://keep.com/v1".into()),
             api_token: Some("keep-token".into()),
             model_name: Some("keep-model".into()),
         };
-        let config2 = APIConfig {
+        let override_with = APIConfig {
             api_endpoint: None,
             api_token: Some("override-token".into()),
             model_name: None,
         };
-        let result = merge_config(config1, config2);
-        assert_eq!(result.api_endpoint.unwrap(), "https://keep.com/v1");
-        assert_eq!(result.api_token.unwrap(), "override-token");
-        assert_eq!(result.model_name.unwrap(), "keep-model");
+        let merged = merge_config(base, override_with);
+        assert_eq!(merged.api_endpoint.unwrap(), "https://keep.com/v1");
+        assert_eq!(merged.api_token.unwrap(), "override-token");
+        assert_eq!(merged.model_name.unwrap(), "keep-model");
     }
 
     #[test]
     fn merge_config_no_overrides() {
-        let config1 = APIConfig {
+        let base = APIConfig {
             api_endpoint: Some("https://stable.com/v1".into()),
             api_token: Some("stable-token".into()),
             model_name: Some("stable-model".into()),
         };
-        let config2 = APIConfig::default();
-        let result = merge_config(config1, config2);
-        assert_eq!(result.api_endpoint.unwrap(), "https://stable.com/v1");
-        assert_eq!(result.api_token.unwrap(), "stable-token");
-        assert_eq!(result.model_name.unwrap(), "stable-model");
+        let override_with = APIConfig::default();
+        let merged = merge_config(base, override_with);
+        assert_eq!(merged.api_endpoint.unwrap(), "https://stable.com/v1");
+        assert_eq!(merged.api_token.unwrap(), "stable-token");
+        assert_eq!(merged.model_name.unwrap(), "stable-model");
     }
 
     #[test]
-    fn merge_config_overrides_with_none_in_config1() {
-        // config1 has some None fields, config2 provides values
-        let config1 = APIConfig::default();
-        let config2 = APIConfig {
+    fn merge_config_overrides_with_none_in_base() {
+        // base has some None fields, override_with provides values
+        let base = APIConfig::default();
+        let override_with = APIConfig {
             api_endpoint: Some("https://set.com/v1".into()),
             api_token: None,
             model_name: Some("set-model".into()),
         };
-        let result = merge_config(config1, config2);
-        assert_eq!(result.api_endpoint.unwrap(), "https://set.com/v1");
-        assert!(result.api_token.is_none());
-        assert_eq!(result.model_name.unwrap(), "set-model");
+        let merged = merge_config(base, override_with);
+        assert_eq!(merged.api_endpoint.unwrap(), "https://set.com/v1");
+        assert!(merged.api_token.is_none());
+        assert_eq!(merged.model_name.unwrap(), "set-model");
     }
 
     #[test]
@@ -233,28 +237,28 @@ mod config_test {
 
     /// HOME environment guard: sets HOME, restores the original value and cleans up the temp dir on drop
     struct HomeGuard {
-        old: Option<std::ffi::OsString>,
-        dir: std::path::PathBuf,
+        previous_home: Option<std::ffi::OsString>,
+        home_dir: std::path::PathBuf,
     }
 
     impl HomeGuard {
         fn new(dir: &std::path::Path) -> Self {
-            let old = std::env::var_os("HOME");
+            let previous_home = std::env::var_os("HOME");
             std::env::set_var("HOME", dir);
             Self {
-                old,
-                dir: dir.to_path_buf(),
+                previous_home,
+                home_dir: dir.to_path_buf(),
             }
         }
     }
 
     impl Drop for HomeGuard {
         fn drop(&mut self) {
-            match &self.old {
+            match &self.previous_home {
                 Some(v) => std::env::set_var("HOME", v),
                 None => std::env::remove_var("HOME"),
             }
-            let _ = std::fs::remove_dir_all(&self.dir);
+            let _ = std::fs::remove_dir_all(&self.home_dir);
         }
     }
 
