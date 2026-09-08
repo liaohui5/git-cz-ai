@@ -1,4 +1,5 @@
 use git2::{Commit, Diff, DiffFormat, ErrorCode, Repository, Signature, Tree};
+use std::env::current_dir;
 use std::error::Error;
 use std::path::Path;
 use std::str::from_utf8;
@@ -7,7 +8,7 @@ const NO_STAGED_CHANGES: &str = "No staged changes, please 'git add' your files 
 
 /// execute `git diff --cached` get staged changes
 pub fn get_staged_diff() -> Result<String, Box<dyn Error>> {
-    get_staged_diff_in(Path::new("."))
+    get_staged_diff_in(&current_dir()?)
 }
 
 fn get_staged_diff_in(repo_path: &Path) -> Result<String, Box<dyn Error>> {
@@ -51,7 +52,10 @@ fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, Box<dyn Error>> 
 
 /// Build the staged diff (index vs `base_tree`) and reject it when nothing is
 /// staged. `base_tree` is `None` for a repo with no commits yet (empty tree).
-fn staged_diff<'a>(repo: &'a Repository, base_tree: Option<&'a Tree>) -> Result<Diff<'a>, Box<dyn Error>> {
+fn staged_diff<'a>(
+    repo: &'a Repository,
+    base_tree: Option<&'a Tree>,
+) -> Result<Diff<'a>, Box<dyn Error>> {
     let index = repo.index()?;
     let diff = repo.diff_tree_to_index(base_tree, Some(&index), None)?;
     if diff.deltas().len() == 0 {
@@ -61,7 +65,7 @@ fn staged_diff<'a>(repo: &'a Repository, base_tree: Option<&'a Tree>) -> Result<
 }
 
 pub fn has_staged_changes() -> Result<(), Box<dyn Error>> {
-    let repo = Repository::open(".")?;
+    let repo = Repository::open(&current_dir()?)?;
 
     // None when the repo has no commits yet: diff the index against an empty tree
     let base_tree = head_commit(&repo)?
@@ -103,39 +107,13 @@ pub fn perform_commit(full_commit_message: &str) -> Result<(), Box<dyn Error>> {
 #[cfg(test)]
 mod git_test {
     use super::*;
+    use crate::test_util::TempDir;
     use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::path::Path;
     use std::sync::Mutex;
 
-    static DIR_COUNTER: AtomicUsize = AtomicUsize::new(0);
     // perform_commit runs against the process cwd ("."); serialize those tests
     static CWD_LOCK: Mutex<()> = Mutex::new(());
-
-    /// Unique temp dir per test so parallel tests do not collide; removes
-    /// itself on drop so no leftovers accumulate in the system temp dir.
-    struct TempDir(PathBuf);
-
-    impl TempDir {
-        fn new(name: &str) -> Self {
-            let n = DIR_COUNTER.fetch_add(1, Ordering::SeqCst);
-            let path = std::env::temp_dir()
-                .join(format!("git-cz-ai-test-{name}-{}-{n}", std::process::id()));
-            let _ = fs::remove_dir_all(&path);
-            fs::create_dir_all(&path).unwrap();
-            TempDir(path)
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
 
     /// Configure user.name/user.email locally so `perform_commit` can build a signature.
     fn set_test_identity(repo: &Repository) {

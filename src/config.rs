@@ -101,23 +101,8 @@ pub fn merge_config(mut base: APIConfig, override_with: APIConfig) -> APIConfig 
 #[cfg(test)]
 mod config_test {
     use super::{init_config, merge_config, APIConfig, DEFAULT_CONFIG_CONTENT};
+    use crate::test_util::TempDir;
     use std::fs;
-    use std::sync::atomic::{AtomicU32, Ordering};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    /// Each test uses its own temp dir to avoid parallel test conflicts
-    fn unique_temp_dir() -> std::path::PathBuf {
-        static COUNTER: AtomicU32 = AtomicU32::new(0);
-        let ts = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let seq = COUNTER.fetch_add(1, Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("git-cz-test-{ts}-{seq}"));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
 
     #[test]
     fn merge_config_overrides_all() {
@@ -186,8 +171,8 @@ mod config_test {
 
     #[test]
     fn init_config_creates_file() {
-        let dir = unique_temp_dir();
-        let config_path = dir.join("config.toml");
+        let dir = TempDir::new("init-creates");
+        let config_path = dir.path().join("config.toml");
 
         assert!(!config_path.exists());
         init_config(&config_path).unwrap();
@@ -195,15 +180,12 @@ mod config_test {
 
         let content = fs::read_to_string(&config_path).unwrap();
         assert_eq!(content, DEFAULT_CONFIG_CONTENT);
-
-        // cleanup
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn init_config_already_exists() {
-        let dir = unique_temp_dir();
-        let config_path = dir.join("config.toml");
+        let dir = TempDir::new("init-exists");
+        let config_path = dir.path().join("config.toml");
 
         // create the file first with custom content
         let custom_content = "custom = \"content\"\n";
@@ -217,9 +199,6 @@ mod config_test {
             content, custom_content,
             "existing file should not be overwritten"
         );
-
-        // cleanup
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -264,15 +243,15 @@ mod config_test {
 
     #[test]
     fn load_config_errors_return_english_messages() {
-        let dir = unique_temp_dir();
-        let _guard = HomeGuard::new(&dir);
+        let dir = TempDir::new("load-errors");
+        let _guard = HomeGuard::new(dir.path());
 
         // Scenario 1: config file does not exist -> config file not found
         let err = super::load_config().unwrap_err();
         assert!(err.to_string().contains("Config file not found at"));
 
         // Scenario 2: config file exists but TOML is invalid -> failed to parse config file
-        let config_file = dir.join(".config/git-cz/config.toml");
+        let config_file = dir.path().join(".config/git-cz/config.toml");
         std::fs::create_dir_all(config_file.parent().unwrap()).unwrap();
         std::fs::write(&config_file, "not = = valid toml {{{").unwrap();
         let err = super::load_config().unwrap_err();

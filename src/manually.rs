@@ -26,7 +26,7 @@ pub fn handler() -> Result<(), Box<dyn error::Error>> {
 
     let commit_type = select_commit_type();
     let commit_scope = input_commit_scope();
-    let break_change_mark = confirm_is_breaking_change();
+    let break_change_mark = breaking_change_mark();
     let commit_message = input_commit_message();
     let commit_body = input_commit_body();
     let commit_footer = input_commit_footer();
@@ -44,7 +44,7 @@ pub fn handler() -> Result<(), Box<dyn error::Error>> {
     println!("{}", full_commit_message);
     println!("{}", "-".repeat(50));
 
-    if is_confirm_commit() {
+    if confirm_commit() {
         git::perform_commit(&full_commit_message)?;
     }
 
@@ -80,7 +80,8 @@ pub fn select_commit_type() -> String {
     }
 }
 
-pub fn confirm_is_breaking_change() -> String {
+/// Return "!" for a breaking change, "" otherwise.
+pub fn breaking_change_mark() -> String {
     // y or n(default)
     let is_breaking_change = Confirm::new("Is this a breaking change(optional)?")
         .with_default(false)
@@ -171,7 +172,7 @@ pub fn input_commit_footer() -> String {
     format!("{}: #{}", footer_type, footer_text)
 }
 
-pub fn is_confirm_commit() -> bool {
+pub fn confirm_commit() -> bool {
     // Are you sure to proceed with this commit?
     Confirm::new("Are you sure to proceed with this commit(Default: yes)?")
         .with_default(true)

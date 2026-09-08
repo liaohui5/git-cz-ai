@@ -62,7 +62,7 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
         .ok_or("Missing API config field (model_name)")?;
 
     let mut loading_spinner = LoadingSpinner::default();
-    loading_spinner.start("Request has been sent, please wait...");
+    loading_spinner.start("🚀 Request has been sent, please wait...");
 
     // Send the request
     let result = ureq::post(&api_endpoint)
@@ -75,12 +75,9 @@ pub fn send_request(config: APIConfig, prompt: String) -> Result<String, Box<dyn
 
     // Stop the spinner before returning the error on request failure
     loading_spinner.stop();
-    if let Err(e) = result {
-        return Err(format_request_error(e).into());
-    }
-
-    result
-        .unwrap()
+    let mut response =
+        result.map_err::<Box<dyn error::Error>, _>(|e| format_request_error(e).into())?;
+    response
         .body_mut()
         .read_to_string()
         .map_err(|_| "Failed to read response body".into())
@@ -105,7 +102,7 @@ fn format_request_error(e: ureq::Error) -> String {
 }
 
 pub fn select_commit_message(messages: Vec<String>) -> Option<String> {
-    let options: Vec<&str> = messages.iter().map(|m| m.as_str()).collect();
+    let options: Vec<&str> = messages.iter().map(String::as_str).collect();
     let page_size = options.len();
 
     let commit_message: Result<&str, InquireError> =
@@ -193,8 +190,9 @@ The following example shows an output that meets all requirements (note: the exa
 
 # Format requirements
 
-- must be outupt `json`
-- *The output must adhere to the aforementioned requirements and be in a well-formatted JSON format*
+- Ensure the JSON format is correct (use double quotes, comma separation, no trailing comma).
+- If you cannot extract at least 3 logical units from the diff, you may split appropriately, but you must guarantee that each message truthfully reflects the changes in the diff, only with different emphasis.
+- All commit messages must be strictly lowercase and under 100 characters.
 "##;
 
 /// Replace the {{diff}} placeholder in the prompt with the diff content.
